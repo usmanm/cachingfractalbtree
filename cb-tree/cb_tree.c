@@ -29,8 +29,10 @@ void cb_init_tree(
 	size_t cache_avail_body = slot_size - sizeof(cb_node_h);
 	size_t cache_keys = cache_avail_body / sizeof(cb_tuple);
 
-	tree->cache_tuples = cache_keys;
+	assert(node_keys > 0);
 	assert(cache_keys > 0);
+	tree->node_keys = node_keys;
+	tree->cache_tuples = cache_keys;
 
 	// empirically find the branching factor leading to least waste
 	// space is \sum_{i=0}^h b^i \cdot (slot_size) + b^{h+1} \cdot (leaf_size)
@@ -38,7 +40,7 @@ void cb_init_tree(
 	size_t best_h = 1;
 	size_t best_req = 0;
 	size_t best_used = 0;
-	size_t best_slots = 0;
+	size_t best_nodes = 0;
 	size_t best_leaves = 0;
 	// set a brancing factor
 	for (size_t b = 2; b <= max_branching_factor; ++b)
@@ -46,7 +48,7 @@ void cb_init_tree(
 		// set a height
 		size_t req_bytes = 0;
 		size_t used_bytes = 0;
-		size_t num_slots = 0;
+		size_t num_nodes = 0;
 		size_t num_leaves = 0;
 		for (size_t h = 1; used_bytes <= block_size; ++h)
 		{
@@ -57,7 +59,7 @@ void cb_init_tree(
 			{
 				req_bytes += pow(b, i) * slot_size;
 				used_bytes += pow(b, i) * (sizeof(cb_node_h) + sizeof(cb_key)*(b - 1));
-				num_slots += pow(b, i);
+				num_nodes += pow(b, i);
 			}
 			// add space for the leaves
 			req_bytes += pow(b, h + 1) * sizeof(cb_leaf);
@@ -75,27 +77,61 @@ void cb_init_tree(
 					best_h = h;
 					best_req = req_bytes;
 					best_used = used_bytes;
-					best_slots = num_slots;
+					best_nodes = num_nodes;
 					best_leaves = num_leaves;
 				}
 			}
 		}
 	}
-	float usage_density = best_used / (float)block_size;
-	printf("chosen branch_factor, height, slots, leaves, req, used, density: %zu %zu %zu %zu %zu %zu %f\n",
-			best_b, best_h, best_slots, best_leaves, best_req, best_used, usage_density);
 
 	tree->block_bfactor = best_b;
 	tree->block_height = best_h;
-	tree->block_slots = best_slots;
+	tree->block_nodes = best_nodes;
+	tree->block_leaves = best_leaves;
+	tree->block_leaves_off = block_size - best_leaves * sizeof(cb_leaf) - sizeof (cb_block_h);
+	tree->block_slots = tree->block_leaves_off / slot_size;
+	tree->blocks_alloc = 1;
+	tree->blocks_used = 1;
 
 	tree->index_fd = open(file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	assert(tree->index_fd != -1);
 
 	ftruncate(tree->index_fd, block_size);
 	tree->root = mmap(NULL, block_size, PROT_READ | PROT_WRITE, MAP_SHARED, tree->index_fd, 0);
-
-	tree->root->parent = NULL;
+	
+	float usage_density = best_used / (float)block_size;
+	printf("index_fd %i\n"
+			"block_size %zu\n"
+			"slot_size %zu\n"
+			"blocks_alloc %zu\n"
+			"blocks_used %zu\n"
+			"block_slots %zu\n"
+			"block_nodes %zu\n"
+			"block_leaves %zu\n"
+			"node_keys %zu\n"
+			"cache_tuples %zu\n"
+			"block_bfactor %zu\n"
+			"block_height %zu\n"
+			"block_leaves_off %zu\n"
+			"%% used bytes %zu\n"
+			"%% required bytes %zu\n"
+			"%% density %f\n",
+			tree->index_fd,
+			tree->block_size,
+			tree->slot_size,
+			tree->blocks_alloc,
+			tree->blocks_used,
+			tree->block_slots,
+			tree->block_nodes,
+			tree->block_leaves,
+			tree->node_keys,
+			tree->cache_tuples,
+			tree->block_bfactor,
+			tree->block_height,
+			tree->block_leaves_off,
+			best_used,
+			best_req,
+			usage_density);
 	
 }
 
@@ -120,6 +156,13 @@ static inline size_t _cb_search_node(
 		char *status)
 {
 	cb_node_h *node = (cb_node_h *)(block->body + node_pos * tree->slot_size);
+	
+	if (node->keyc == 0)
+	{
+		*status = CB_FOUND_NONE;
+		return 0;
+	}
+
 	for (uint8_t i = 0; i < node->keyc; ++i)
 	{
 		if (key <= node->keyv[i])
@@ -129,16 +172,8 @@ static inline size_t _cb_search_node(
 		}
 	}
 	
-	if (node->keyc == 0)
-	{
-		*status = CB_FOUND_NONE;
-		return 0;
-	}
-	else
-	{
-		*status = CB_FOUND_RANGE;
-		return tree->block_bfactor * node_pos + 1 + node->keyc;
-	}
+	*status = CB_FOUND_RANGE;
+	return tree->block_bfactor * node_pos + 1 + node->keyc;
 }
 
 /**
@@ -168,9 +203,11 @@ static inline void _cb_search_block(
 		else
 		{
 			// just take the first virtual child
-			// exact remains as per the last real comparison
+			// status remains as per the last comparison
 			node_pos = tree->block_bfactor * node_pos + 1;
 		}
+
+		assert(*status != CB_FOUND_NONE);
 	}
 	size_t leaf = node_pos - tree->block_nodes;
 	*res = (cb_leaf *)(block->body + tree->block_leaves_off) + leaf;

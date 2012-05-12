@@ -42,8 +42,8 @@ typedef uint32_t cb_key;
 struct _cb_tuple
 {
 	int32_t id;
-	char name[20];
-	char dob[8];
+	//char name[20];
+	//char dob[8];
 
 }
 __attribute__((packed));
@@ -100,7 +100,7 @@ __attribute__((packed));
 struct _cb_block_h
 {
 	char type;
-	cb_block_h *parent;
+	size_t parent;
 
 	char body[0];
 
@@ -136,6 +136,9 @@ struct _cb_tree
 
 	// number of nodes in a block
 	size_t block_nodes;
+
+	// number of leaves in a block
+	size_t block_leaves;
 
 	// max number of keys in a node
 	size_t node_keys;
