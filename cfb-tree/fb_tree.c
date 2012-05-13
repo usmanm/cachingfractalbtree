@@ -31,8 +31,8 @@ void fb_init_tree(
 	size_t cache_avail_body = slot_size - sizeof(fb_node_h);
 	size_t cache_keys = cache_avail_body / sizeof(fb_tuple);
 
-	assert(node_keys > 0);
-	assert(cache_keys > 0);
+	assert(node_keys >= 2); // otherwise we cannot split a node
+	assert(cache_keys >= 1);
 	tree->node_keys = node_keys;
 	tree->cache_tuples = cache_keys;
 
@@ -388,13 +388,44 @@ static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t
 	return node->keyc >= tree->node_keys ? true : false;
 }
 
+static inline void _fb_split_block(
+		fb_tree *tree)
+{
+	// TODO
+}
+
 static inline void _fb_split_node(
 		fb_tree *tree,
 		fb_block_h *block,
-		size_t node_pos,
-		fb_key key)
+		size_t node_pos)
 {
+	if (node_pos == 0)
+	{
+		// TODO we need to branch the block
+		assert(false);
+		return;
+	}
 
+	size_t parent_pos = (node_pos - 1) / tree->block_bfactor;
+	fb_node_h *node = ((fb_node_h *)block->body) + node_pos;
+	fb_node_h *next = node_pos + 1;
+	next->keyc = 0;
+	for (size_t i = node->keyc / 2; i < node->keyc; ++i)
+	{
+		next->keyv[next->keyc] = node->keyv[i];
+		++next->keyc;
+	}
+	node->keyc -= next->keyc;
+
+	// TODO this is not enough, we must take care of the leaves here
+
+	// insert the min of the new node into the parent
+	// if the parent becomes full, recursively split it
+	_fb_insert_node(tree, block, parent_pos, next->keyv[0]);
+	if (_fb_node_needs_split(tree, block, parent_pos))
+	{
+		_fb_split_node(tree, block, parent_pos);
+	}
 }
 
 void fb_insert(
