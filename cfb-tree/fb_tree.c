@@ -166,23 +166,24 @@ static void _fb_init_block(fb_tree *tree, fb_block_h* block, char type, size_t p
 }
 
 /**
- * @param tree The tree to query
- * @param block The block in the tree to query
- * @param node_pos The position of the node to search in
- * @param key The key being searched
- * @param leaf_pos Which child of the node is the leaf
- * @param status Whether we found the exact item, the range containing it, or none
+ * @param[in] tree The tree to query
+ * @param[in] block The block in the tree to query
+ * @param[in] node_pos The position of the node to search in
+ * @param[in] key The key being searched
+ * @param[out] child To which child of the node the leaf corresponds
+ * @param[out] status Whether we found the exact item, the range containing it, or none
+ * @return The absolute position of the child in the block
  */
 static inline size_t _fb_search_node(
 		fb_tree *tree,
 		fb_block_h *block,
 		size_t node_pos,
 		fb_key key,
-		size_t *leaf_pos,
+		size_t *child,
 		char *status)
 {
 	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
-	
+
 	if (node->keyc == 0)
 	{
 		// this should never happen
@@ -194,23 +195,26 @@ static inline size_t _fb_search_node(
 	{
 		if (key <= node->keyv[i])
 		{
-			*leaf_pos = i;
+			*child = i;
 			*status = key == node->keyv[i] ? CFB_FOUND_EXACT : CFB_FOUND_RANGE;
 			return tree->block_bfactor * node_pos + 1 + i;
 		}
 	}
 	
+	*child = node->keyc;
 	*status = CFB_FOUND_RANGE;
 	return tree->block_bfactor * node_pos + 1 + node->keyc;
 }
 
 /**
- * @param tree The tree to search in
- * @param block The block in the tree to search in
- * @param key The key being searched
- * @param node_pos The node that owns the leaf
- * @param leaf The leaf found by the search
- * @param status Whether we found the exact item or the range that should contain it
+ * @param[in] tree The tree to search in
+ * @param[in] block The block in the tree to search in
+ * @param[in] key The key being searched
+ * @param[out] node_pos The node that owns the leaf
+ * @param[out] leaf The leaf found by the search
+ * @param[out] leaf_pos The absolute position of the leaf in the block
+ * @param[out] child The child of the lowest existing node to which the leaf corresponds
+ * @param[out] status Whether we found the exact item or the range that should contain it
  */
 static inline void _fb_search_block(
 		fb_tree *tree,
@@ -219,6 +223,7 @@ static inline void _fb_search_block(
 		size_t *node_pos,
 		fb_leaf *leaf,
 		size_t *leaf_pos,
+		size_t *child,
 		char *status)
 {
 	size_t node_pos_curr = 0;
@@ -232,7 +237,7 @@ static inline void _fb_search_block(
 		{
 			// choose which child node to access
 			node_pos_old = node_pos_curr;
-			node_pos_curr = _fb_search_node(tree, block, node_pos_curr, key, leaf_pos, status);
+			node_pos_curr = _fb_search_node(tree, block, node_pos_curr, key, child, status);
 		}
 		else
 		{
@@ -255,6 +260,7 @@ void _fb_get(
 		size_t *block_pos,
 		size_t *node_pos,
 		size_t *leaf_pos,
+		size_t *child,
 		char *status)
 {
 	fb_block_h *block = tree->root;
@@ -263,7 +269,7 @@ void _fb_get(
 
 	long page_size = sysconf(_SC_PAGESIZE);
 	*block_pos = 0;
-	_fb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, status);
+	_fb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, child, status);
 	
 	while (leaf.type == CFB_LEAF_TYPE_BLOCK)
 	{
@@ -278,16 +284,16 @@ void _fb_get(
 		assert(mptr != MAP_FAILED);
 		
 		block = (fb_block_h *)(mptr + *block_pos - offset);
-		_fb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, status);
+		_fb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, child, status);
 
 		munmap(mptr, tree->block_size);
 	}
 
 	*found = false;
+	*tuple_pos = leaf.pos;
 	if (leaf.type == CFB_LEAF_TYPE_TUPLE && *status == CFB_FOUND_EXACT)
 	{
 		*found = true;
-		*tuple_pos = leaf.pos;
 	}
 }
 
@@ -300,8 +306,9 @@ void fb_get(
 	size_t block_pos;
 	size_t node_pos;
 	size_t leaf_pos;
+	size_t child;
 	char status;
-	_fb_get(tree, key, found, tuple_pos, &block_pos, &node_pos, &leaf_pos, &status);
+	_fb_get(tree, key, found, tuple_pos, &block_pos, &node_pos, &leaf_pos, &child, &status);
 }
 
 static inline void _fb_insert_node(
@@ -311,10 +318,9 @@ static inline void _fb_insert_node(
 		fb_key key)
 {
 	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
-	if (node->keyc >= tree->block_nodes - 1)
+	if (node->keyc >= tree->node_keys)
 	{
 		// there is no room for an insert
-		// or the insert should be a split
 		// should never reach this
 		assert(false);
 	}
@@ -340,15 +346,15 @@ static inline void _fb_insert_node(
 static inline void _fb_insert_leaf(
 		fb_tree *tree,
 		fb_leaf *target,
-		size_t insert_pos,
+		size_t child,
 		size_t value)
 {
 	fb_leaf buff;
 	fb_leaf next;
 	next.type = CFB_LEAF_TYPE_TUPLE;
-	next.pos = tuple_pos;
+	next.pos = value;
 	
-	for (size_t i = 0; i < tree->block_bfactor - insert_pos - 1; ++i)
+	for (size_t i = 0; i < tree->block_bfactor - child; ++i)
 	{
 		buff = target[i];
 		target[i] = next;
@@ -359,7 +365,16 @@ static inline void _fb_insert_leaf(
 static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t node_pos)
 {
 	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
-	return node->keyc >= tree->node_keys - 1 ? true : false;
+	return node->keyc >= tree->node_keys ? true : false;
+}
+
+static inline void _fb_split_node(
+		fb_tree *tree,
+		fb_block_h *block,
+		size_t node_pos,
+		fb_key key)
+{
+
 }
 
 void fb_insert(
@@ -372,12 +387,13 @@ void fb_insert(
 	size_t old_block_pos;
 	size_t old_node_pos;
 	size_t old_leaf_pos;
+	size_t child;
 	char status;
 
 	long page_size = sysconf(_SC_PAGESIZE);
 	char *mptr = NULL;
 	
-	_fb_get(tree, key, &found, &old_tuple_pos, &old_block_pos, &old_node_pos, &old_leaf_pos, &status);
+	_fb_get(tree, key, &found, &old_tuple_pos, &old_block_pos, &old_node_pos, &old_leaf_pos, &child, &status);
 	
 	fb_block_h *block = tree->root;
 	if (old_block_pos != 0) // open the block owning the leaf
@@ -397,13 +413,23 @@ void fb_insert(
 	if (found) // replace an existing leaf
 	{
 		target->pos = value;
-		return;
+		goto cleanup;
 	}
 	else // insert an item that was not present
 	{
-		_fb_node_needs_split(tree, block, old_node_pos);
+		printf("inserting...\n");
 		_fb_insert_node(tree, block, old_node_pos, key);
-		_fb_insert_leaf(tree, target, old_leaf_pos, value);
+		_fb_insert_leaf(tree, target, child, value);
+
+		_fb_node_needs_split(tree, block, old_node_pos);
+		// TODO
+	}
+
+cleanup:
+
+	if (block != tree->root)
+	{
+		munmap(mptr, tree->block_size);
 	}
 }
 
@@ -412,3 +438,4 @@ void fb_insert(
 		fb_key key)
 {
 }*/
+
