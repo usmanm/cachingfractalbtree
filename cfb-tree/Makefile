@@ -11,12 +11,12 @@ PERF = -O3 -march=native
 
 LIBS = -lm
 
-test: cb_tree.c cb_tree.h test.c
+test: fb_tree.c fb_tree.h test.c
 	$(CC) $(CFLAGS) $(DEBUG) $(PERF) $(LIBS) $(DEFS) -o test test.c
 
-cb_tree.o: cb_tree.c cb_tree.h
-	$(CC) $(CFLAGS) $(DEBUG) $(PERF) $(LIBS) $(DEFS) -c -o cb_tree.o cb_tree.c
-	$(CC) -shared $(CFLAGS) $(DEBUG) $(PERF) $(LIBS) $(DEFS) -o cb_tree.so cb_tree.c
+fb_tree.o: fb_tree.c fb_tree.h
+	$(CC) $(CFLAGS) $(DEBUG) $(PERF) $(LIBS) $(DEFS) -c -o fb_tree.o fb_tree.c
+	$(CC) -shared $(CFLAGS) $(DEBUG) $(PERF) $(LIBS) $(DEFS) -o fb_tree.so fb_tree.c
 
 
 .PHONY: clean

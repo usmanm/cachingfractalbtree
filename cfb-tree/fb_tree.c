@@ -1,4 +1,4 @@
-#include "cb_tree.h"
+#include "fb_tree.h"
 
 #include <assert.h>
 #include <math.h>
@@ -9,27 +9,27 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-static void _cb_init_block(cb_tree *tree, cb_block_h* block, char type, size_t parent);
+static void _fb_init_block(fb_tree *tree, fb_block_h* block, char type, size_t parent);
 
-void cb_init_tree(
-		cb_tree *tree,
+void fb_init_tree(
+		fb_tree *tree,
 		const char *file,
 		size_t block_size,
 		size_t slot_size)
 {
-	assert(slot_size >= sizeof(cb_node_h));
-	assert(slot_size >= sizeof(cb_cache_h));
-	assert(block_size >= sizeof(cb_block_h));
+	assert(slot_size >= sizeof(fb_node_h));
+	assert(slot_size >= sizeof(fb_cache_h));
+	assert(block_size >= sizeof(fb_block_h));
 
 	tree->block_size = block_size;
 	tree->slot_size = slot_size;
 
-	size_t node_avail_body = slot_size - sizeof(cb_node_h);
-	size_t node_keys = node_avail_body / sizeof(cb_key);
+	size_t node_avail_body = slot_size - sizeof(fb_node_h);
+	size_t node_keys = node_avail_body / sizeof(fb_key);
 	size_t max_branching_factor = node_keys + 1 < UINT8_MAX ? node_keys + 1 : UINT8_MAX;
 
-	size_t cache_avail_body = slot_size - sizeof(cb_node_h);
-	size_t cache_keys = cache_avail_body / sizeof(cb_tuple);
+	size_t cache_avail_body = slot_size - sizeof(fb_node_h);
+	size_t cache_keys = cache_avail_body / sizeof(fb_tuple);
 
 	assert(node_keys > 0);
 	assert(cache_keys > 0);
@@ -37,7 +37,7 @@ void cb_init_tree(
 	tree->cache_tuples = cache_keys;
 
 	// empirically find the branching factor leading to least waste
-	// space is \sum_{i=0}^h b^i \cdot (slot_size) + b^{h+1} \cdot (leaf_size)
+	// space is @f$\sum_{i=0}^h b^i \cdot \text{ (slot_size) } + b^{h+1} \cdot \text{ (leaf_size) }$
 	size_t best_b = 2;
 	size_t best_h = 1;
 	size_t best_req = 0;
@@ -55,17 +55,17 @@ void cb_init_tree(
 		for (size_t h = 1; used_bytes <= block_size; ++h)
 		{
 			// add space for the slots
-			req_bytes = sizeof(cb_block_h);
-			used_bytes = sizeof(cb_block_h);
+			req_bytes = sizeof(fb_block_h);
+			used_bytes = sizeof(fb_block_h);
 			for (size_t i = 0; i <= h; ++i)
 			{
 				req_bytes += pow(b, i) * slot_size;
-				used_bytes += pow(b, i) * (sizeof(cb_node_h) + sizeof(cb_key)*(b - 1));
+				used_bytes += pow(b, i) * (sizeof(fb_node_h) + sizeof(fb_key)*(b - 1));
 				num_nodes += pow(b, i);
 			}
 			// add space for the leaves
-			req_bytes += pow(b, h + 1) * sizeof(cb_leaf);
-			used_bytes += pow(b, h + 1) * sizeof(cb_leaf);
+			req_bytes += pow(b, h + 1) * sizeof(fb_leaf);
+			used_bytes += pow(b, h + 1) * sizeof(fb_leaf);
 			num_leaves = pow(b, h + 1);
 
 			//printf("b, h, req, used, density: %zu %zu %zu %zu %f\n",
@@ -90,7 +90,7 @@ void cb_init_tree(
 	tree->block_height = best_h;
 	tree->block_nodes = best_nodes;
 	tree->block_leaves = best_leaves;
-	tree->block_leaves_off = block_size - best_leaves * sizeof(cb_leaf) - sizeof (cb_block_h);
+	tree->block_leaves_off = block_size - best_leaves * sizeof(fb_leaf) - sizeof (fb_block_h);
 	tree->block_slots = tree->block_leaves_off / slot_size;
 	tree->blocks_alloc = 1;
 	tree->blocks_used = 1;
@@ -100,7 +100,7 @@ void cb_init_tree(
 
 	ftruncate(tree->index_fd, block_size);
 	tree->root = mmap(NULL, block_size, PROT_READ | PROT_WRITE, MAP_SHARED, tree->index_fd, 0);
-	_cb_init_block(tree, tree->root, CB_BLOCK_TYPE_ROOT, 0);
+	_fb_init_block(tree, tree->root, CFB_BLOCK_TYPE_ROOT | CFB_BLOCK_TYPE_LEAF, 0);
 
 	float usage_density = best_used / (float)block_size;
 	printf("index_fd %i\n"
@@ -138,28 +138,28 @@ void cb_init_tree(
 	
 }
 
-void cb_destr_tree(cb_tree *tree)
+void fb_destr_tree(fb_tree *tree)
 {
 	munmap(tree->root, tree->block_size);
 	close(tree->index_fd);
 }
 
-static void _cb_init_block(cb_tree *tree, cb_block_h* block, char type, size_t parent)
+static void _fb_init_block(fb_tree *tree, fb_block_h* block, char type, size_t parent)
 {
 	block->type = type;
 	block->parent = parent;
 
 	for (size_t s = 0; s < tree->block_slots; ++s)
 	{
-		cb_cache_h *cache = (cb_cache_h *)(block->body + s * tree->slot_size);
-		cache->slot.type = CB_SLOT_TYPE_CACHE;
+		fb_cache_h *cache = (fb_cache_h *)(block->body + s * tree->slot_size);
+		cache->slot.type = CFB_SLOT_TYPE_CACHE;
 		cache->tuplec = 0;
 	}
 
-	cb_leaf *leaf = (cb_leaf *)(block->body + tree->block_leaves_off);
+	fb_leaf *leaf = (fb_leaf *)(block->body + tree->block_leaves_off);
 	for (size_t l = 0; l < tree->block_leaves; ++l)
 	{
-		leaf->type = CB_LEAF_TYPE_NULL;
+		leaf->type = CFB_LEAF_TYPE_NULL;
 		leaf->pos = 0;
 		++leaf;
 	}
@@ -173,15 +173,15 @@ static void _cb_init_block(cb_tree *tree, cb_block_h* block, char type, size_t p
  * @param leaf_pos Which child of the node is the leaf
  * @param status Whether we found the exact item, the range containing it, or none
  */
-static inline size_t _cb_search_node(
-		cb_tree *tree,
-		cb_block_h *block,
+static inline size_t _fb_search_node(
+		fb_tree *tree,
+		fb_block_h *block,
 		size_t node_pos,
-		cb_key key,
+		fb_key key,
 		size_t *leaf_pos,
 		char *status)
 {
-	cb_node_h *node = (cb_node_h *)(block->body + node_pos * tree->slot_size);
+	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
 	
 	if (node->keyc == 0)
 	{
@@ -195,12 +195,12 @@ static inline size_t _cb_search_node(
 		if (key <= node->keyv[i])
 		{
 			*leaf_pos = i;
-			*status = key == node->keyv[i] ? CB_FOUND_EXACT : CB_FOUND_RANGE;
+			*status = key == node->keyv[i] ? CFB_FOUND_EXACT : CFB_FOUND_RANGE;
 			return tree->block_bfactor * node_pos + 1 + i;
 		}
 	}
 	
-	*status = CB_FOUND_RANGE;
+	*status = CFB_FOUND_RANGE;
 	return tree->block_bfactor * node_pos + 1 + node->keyc;
 }
 
@@ -212,27 +212,27 @@ static inline size_t _cb_search_node(
  * @param leaf The leaf found by the search
  * @param status Whether we found the exact item or the range that should contain it
  */
-static inline void _cb_search_block(
-		cb_tree *tree,
-		cb_block_h *block,
-		cb_key key,
+static inline void _fb_search_block(
+		fb_tree *tree,
+		fb_block_h *block,
+		fb_key key,
 		size_t *node_pos,
-		cb_leaf *leaf,
+		fb_leaf *leaf,
 		size_t *leaf_pos,
 		char *status)
 {
 	size_t node_pos_curr = 0;
 	size_t node_pos_old = 0;
-	*status = CB_FOUND_NONE;
+	*status = CFB_FOUND_NONE;
 
 	while (node_pos_curr < tree->block_nodes)
 	{
-		cb_slot_h *slot = (cb_slot_h *)(block->body + node_pos_curr * tree->slot_size);
-		if (slot->type == CB_SLOT_TYPE_NODE)
+		fb_slot_h *slot = (fb_slot_h *)(block->body + node_pos_curr * tree->slot_size);
+		if (slot->type == CFB_SLOT_TYPE_NODE)
 		{
 			// choose which child node to access
 			node_pos_old = node_pos_curr;
-			node_pos_curr = _cb_search_node(tree, block, node_pos_curr, key, leaf_pos, status);
+			node_pos_curr = _fb_search_node(tree, block, node_pos_curr, key, leaf_pos, status);
 		}
 		else
 		{
@@ -244,12 +244,12 @@ static inline void _cb_search_block(
 	}
 	*node_pos = node_pos_old;
 	*leaf_pos = node_pos_curr - tree->block_nodes;
-	*leaf = *((cb_leaf *)(block->body + tree->block_leaves_off) + *leaf_pos);
+	*leaf = *((fb_leaf *)(block->body + tree->block_leaves_off) + *leaf_pos);
 }
 
-void cb_get(
-		cb_tree *tree,
-		cb_key key,
+void _fb_get(
+		fb_tree *tree,
+		fb_key key,
 		bool *found,
 		size_t *tuple_pos,
 		size_t *block_pos,
@@ -257,17 +257,18 @@ void cb_get(
 		size_t *leaf_pos,
 		char *status)
 {
-	cb_block_h *block = tree->root;
-	*status = CB_FOUND_NONE;
-	cb_leaf leaf;
+	fb_block_h *block = tree->root;
+	*status = CFB_FOUND_NONE;
+	fb_leaf leaf;
 
 	long page_size = sysconf(_SC_PAGESIZE);
 	*block_pos = 0;
-	_cb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, status);
+	_fb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, status);
 	
-	while (leaf.type == CB_LEAF_TYPE_BLOCK)
+	while (leaf.type == CFB_LEAF_TYPE_BLOCK)
 	{
-		size_t offset = (leaf.pos / page_size) * page_size;
+		*block_pos = leaf.pos;
+		size_t offset = (*block_pos / page_size) * page_size;
 		char *mptr = mmap(NULL,
 				tree->block_size,
 				PROT_READ,
@@ -276,28 +277,40 @@ void cb_get(
 				offset);
 		assert(mptr != MAP_FAILED);
 		
-		*block_pos = leaf.pos;
-		block = (cb_block_h *)(mptr + *block_pos - offset);
-		_cb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, status);
+		block = (fb_block_h *)(mptr + *block_pos - offset);
+		_fb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, status);
 
 		munmap(mptr, tree->block_size);
 	}
 
 	*found = false;
-	if (leaf.type == CB_LEAF_TYPE_TUPLE && *status == CB_FOUND_EXACT)
+	if (leaf.type == CFB_LEAF_TYPE_TUPLE && *status == CFB_FOUND_EXACT)
 	{
 		*found = true;
 		*tuple_pos = leaf.pos;
 	}
 }
 
-static inline void _cb_insert_node(
-		cb_tree *tree,
-		cb_block_h *block,
-		size_t node_pos,
-		cb_key key)
+void fb_get(
+		fb_tree *tree,
+		fb_key key,
+		bool *found,
+		size_t *tuple_pos)
 {
-	cb_node_h *node = (cb_node_h *)(block->body + node_pos * tree->slot_size);
+	size_t block_pos;
+	size_t node_pos;
+	size_t leaf_pos;
+	char status;
+	_fb_get(tree, key, found, tuple_pos, &block_pos, &node_pos, &leaf_pos, &status);
+}
+
+static inline void _fb_insert_node(
+		fb_tree *tree,
+		fb_block_h *block,
+		size_t node_pos,
+		fb_key key)
+{
+	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
 	if (node->keyc >= tree->block_nodes - 1)
 	{
 		// there is no room for an insert
@@ -307,8 +320,8 @@ static inline void _cb_insert_node(
 	}
 
 	// place the new key in order
-	cb_key last = key;
-	cb_key tmp;
+	fb_key last = key;
+	fb_key tmp;
 	size_t pos = SIZE_MAX;
 	for (size_t i = 0; i <= node->keyc; ++i)
 	{
@@ -324,14 +337,16 @@ static inline void _cb_insert_node(
 	++node->keyc;
 }
 
-static inline void _cb_insert_leaf(
-		cb_tree *tree,
-		cb_leaf *target,
-		cb_leaf *value,
-		size_t insert_pos)
+static inline void _fb_insert_leaf(
+		fb_tree *tree,
+		fb_leaf *target,
+		size_t insert_pos,
+		size_t value)
 {
-	cb_leaf buff;
-	cb_leaf next = *value;
+	fb_leaf buff;
+	fb_leaf next;
+	next.type = CFB_LEAF_TYPE_TUPLE;
+	next.pos = tuple_pos;
 	
 	for (size_t i = 0; i < tree->block_bfactor - insert_pos - 1; ++i)
 	{
@@ -341,35 +356,59 @@ static inline void _cb_insert_leaf(
 	}
 }
 
-static inline void _cb_insert_block(
-		cb_tree *tree,
-		cb_block_h *block,
-		cb_key key,
-		cb_leaf **res)
+static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t node_pos)
 {
-	tree = tree;
-	block = block;
-	key = key;
-	res = res;
+	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
+	return node->keyc >= tree->node_keys - 1 ? true : false;
 }
 
-/*static void _cb_index_insert(
-		cb_tree *tree,
-		cb_key key,
-		size_t loc)
+void fb_insert(
+		fb_tree *tree,
+		fb_key key,
+		size_t value)
 {
+	bool found;
+	size_t old_tuple_pos;
+	size_t old_block_pos;
+	size_t old_node_pos;
+	size_t old_leaf_pos;
+	char status;
+
+	long page_size = sysconf(_SC_PAGESIZE);
+	char *mptr = NULL;
+	
+	_fb_get(tree, key, &found, &old_tuple_pos, &old_block_pos, &old_node_pos, &old_leaf_pos, &status);
+	
+	fb_block_h *block = tree->root;
+	if (old_block_pos != 0) // open the block owning the leaf
+	{
+		size_t offset = (old_block_pos / page_size) * page_size;
+		mptr = mmap(NULL,
+			tree->block_size,
+			PROT_READ | PROT_WRITE,
+			MAP_SHARED,
+			tree->index_fd,
+			offset);
+		assert(mptr != MAP_FAILED);
+		block = (fb_block_h *)(mptr + old_block_pos - offset);
+	}
+
+	fb_leaf *target = ((fb_leaf *)(block->body + tree->block_leaves_off)) + old_leaf_pos;
+	if (found) // replace an existing leaf
+	{
+		target->pos = value;
+		return;
+	}
+	else // insert an item that was not present
+	{
+		_fb_node_needs_split(tree, block, old_node_pos);
+		_fb_insert_node(tree, block, old_node_pos, key);
+		_fb_insert_leaf(tree, target, old_leaf_pos, value);
+	}
 }
 
-void cb_insert(
-		cb_tree *tree,
-		cb_key key,
-		cb_tuple tuple)
-{
-
-}
-
-void cb_remove(
-		cb_tree *tree,
-		cb_key key)
+/*void fb_remove(
+		fb_tree *tree,
+		fb_key key)
 {
 }*/
