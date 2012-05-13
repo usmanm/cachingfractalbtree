@@ -18,9 +18,9 @@
 #define CB_SLOT_TYPE_CACHE (2)
 
 #define CB_BLOCK_TYPE_NULL (0)
-#define CB_BLOCK_TYPE_ROOT (1)
-#define CB_BLOCK_TYPE_INNER (2)
-#define CB_BLOCK_TYPE_LEAF (4)
+#define CB_BLOCK_TYPE_ROOT (0xAA)
+#define CB_BLOCK_TYPE_INNER (0xBB)
+#define CB_BLOCK_TYPE_LEAF (0xCC)
 
 typedef struct _cb_tuple cb_tuple;
 typedef struct _cb_leaf cb_leaf;
@@ -169,10 +169,10 @@ void cb_init_tree(
 void cb_destr_tree(
 		cb_tree *tree);
 
-void cb_insert(
+/*void cb_insert(
 		cb_tree *tree,
 		cb_key key,
-		cb_tuple tuple);
+		cb_tuple tuple);*/
 
 #endif
 

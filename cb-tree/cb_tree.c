@@ -209,7 +209,7 @@ static inline size_t _cb_search_node(
  * @param block The block in the tree to search in
  * @param key The key being searched
  * @param node_pos The node that owns the leaf
- * @param leaf Will store a pointer to the corresponding leaf
+ * @param leaf The leaf found by the search
  * @param status Whether we found the exact item or the range that should contain it
  */
 static inline void _cb_search_block(
@@ -217,7 +217,7 @@ static inline void _cb_search_block(
 		cb_block_h *block,
 		cb_key key,
 		size_t *node_pos,
-		cb_leaf **leaf,
+		cb_leaf *leaf,
 		size_t *leaf_pos,
 		char *status)
 {
@@ -244,27 +244,30 @@ static inline void _cb_search_block(
 	}
 	*node_pos = node_pos_old;
 	*leaf_pos = node_pos_curr - tree->block_nodes;
-	*leaf = (cb_leaf *)(block->body + tree->block_leaves_off) + *leaf_pos;
+	*leaf = *((cb_leaf *)(block->body + tree->block_leaves_off) + *leaf_pos);
 }
 
 void cb_get(
 		cb_tree *tree,
 		cb_key key,
 		bool *found,
-		size_t *tuple_pos)
+		size_t *tuple_pos,
+		size_t *block_pos,
+		size_t *node_pos,
+		size_t *leaf_pos,
+		char *status)
 {
 	cb_block_h *block = tree->root;
-	cb_leaf *leaf;
-	char status = CB_FOUND_NONE;
-	size_t leaf_pos, node_pos;
-	
-	long page_size = sysconf(_SC_PAGESIZE);
+	*status = CB_FOUND_NONE;
+	cb_leaf leaf;
 
-	_cb_search_block(tree, block, key, &node_pos, &leaf, &leaf_pos, &status);
+	long page_size = sysconf(_SC_PAGESIZE);
+	*block_pos = 0;
+	_cb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, status);
 	
-	while (leaf->type == CB_LEAF_TYPE_BLOCK)
+	while (leaf.type == CB_LEAF_TYPE_BLOCK)
 	{
-		size_t offset = (leaf->pos / page_size) * page_size;
+		size_t offset = (leaf.pos / page_size) * page_size;
 		char *mptr = mmap(NULL,
 				tree->block_size,
 				PROT_READ,
@@ -273,18 +276,18 @@ void cb_get(
 				offset);
 		assert(mptr != MAP_FAILED);
 		
-		block = (cb_block_h *)(mptr + leaf->pos - offset);
-		size_t node_pos;
-		_cb_search_block(tree, block, key, &node_pos, &leaf, &leaf_pos, &status);
+		*block_pos = leaf.pos;
+		block = (cb_block_h *)(mptr + *block_pos - offset);
+		_cb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, status);
 
 		munmap(mptr, tree->block_size);
 	}
 
 	*found = false;
-	*tuple_pos = leaf->pos;
-	if (leaf->type == CB_LEAF_TYPE_TUPLE && status == CB_FOUND_EXACT)
+	if (leaf.type == CB_LEAF_TYPE_TUPLE && *status == CB_FOUND_EXACT)
 	{
 		*found = true;
+		*tuple_pos = leaf.pos;
 	}
 }
 

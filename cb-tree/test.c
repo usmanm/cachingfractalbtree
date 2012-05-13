@@ -5,7 +5,7 @@
 
 #include "cb_tree.c"
 
-bool test_cb_search_node(cb_tree *tree, cb_block_h *block, int key)
+void test_cb_search_node(cb_tree *tree, cb_block_h *block, int key)
 {
 	size_t node_pos = 0;
 	char status;
@@ -13,18 +13,26 @@ bool test_cb_search_node(cb_tree *tree, cb_block_h *block, int key)
 	size_t pos = _cb_search_node(tree, block, node_pos, key, &key_pos, &status);
 	printf("_cb_search_node: seek %i | status %i | pos %zu | key_pos %zu\n", 
 			key, (int)status, pos, key_pos);
-	return true;
 }
 
-bool test_cb_search_block(cb_tree *tree, cb_block_h *block, int key)
+void test_cb_search_block(cb_tree *tree, cb_block_h *block, int key)
 {
 	char status;
-	cb_leaf *leaf;
+	cb_leaf leaf;
 	size_t leaf_pos, node_pos;
 	_cb_search_block(tree, block, key, &node_pos, &leaf, &leaf_pos, &status);
 	printf("_cb_search_block: seek %i | status %i | content %zu | node_pos %zu | leaf_pos %zu\n",
-			key, (int)status, leaf->pos, node_pos, leaf_pos);
-	return true;
+			key, (int)status, leaf.pos, node_pos, leaf_pos);
+}
+
+void test_cb_get(cb_tree *tree, int key)
+{
+	bool found;
+	size_t tuple_pos, block_pos, node_pos, leaf_pos;
+	char status;
+	cb_get(tree, key, &found, &tuple_pos, &block_pos, &node_pos, &leaf_pos, &status);
+	printf("_cb_get: seek %i | found %i | status %i | content %zu | block_pos %zu | node_pos %zu | leaf_pos %zu\n",
+			key, (int)found, (int)status, tuple_pos, block_pos, node_pos, leaf_pos);
 }
 
 int main(int argc, char *argv[])
@@ -42,9 +50,7 @@ int main(int argc, char *argv[])
 
 	cb_tree tree;
 	cb_init_tree(&tree, argv[1], block, slot);
-	cb_block_h *block_h = malloc(block);
-	block_h->type = CB_BLOCK_TYPE_ROOT;
-	block_h->parent = 33;
+	cb_block_h *block_h = tree.root;
 
 	char m[121] = {
 		1, 2,
@@ -59,14 +65,14 @@ int main(int argc, char *argv[])
 		1, 2,
 		6, 0, 0, 0,
 		7, 0, 0, 0,
-		1, 1, 0, 0, 0, 0, 0, 0, 0,
-		1, 2, 0, 0, 0, 0, 0, 0, 0,
+		2, 1, 0, 0, 0, 0, 0, 0, 0,
+		2, 2, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0,
-		1, 3, 0, 0, 0, 0, 0, 0, 0,
-		1, 4, 0, 0, 0, 0, 0, 0, 0,
+		2, 3, 0, 0, 0, 0, 0, 0, 0,
+		2, 4, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0,
-		1, 6, 0, 0, 0, 0, 0, 0, 0,
-		1, 7, 0, 0, 0, 0, 0, 0, 0,
+		2, 6, 0, 0, 0, 0, 0, 0, 0,
+		2, 7, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0
 	};
 	memcpy(block_h->body, (char *)m, sizeof(m));
@@ -90,8 +96,16 @@ int main(int argc, char *argv[])
 	test_cb_search_block(&tree, block_h, 6);
 	test_cb_search_block(&tree, block_h, 7);
 	test_cb_search_block(&tree, block_h, 8);
-	
-	free(block_h);
+
+	test_cb_get(&tree, 0);
+	test_cb_get(&tree, 1);
+	test_cb_get(&tree, 2);
+	test_cb_get(&tree, 3);
+	test_cb_get(&tree, 4);
+	test_cb_get(&tree, 5);
+	test_cb_get(&tree, 6);
+	test_cb_get(&tree, 7);
+	test_cb_get(&tree, 8);
 
 	cb_destr_tree(&tree);
 	return EXIT_SUCCESS;
