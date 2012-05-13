@@ -11,7 +11,7 @@
 
 #define CFB_LEAF_TYPE_NULL (0)
 #define CFB_LEAF_TYPE_BLOCK (2)
-#define CFB_LEAF_TYPE_TUPLE (4)
+#define CFB_LEAF_TYPE_VAL (4)
 
 #define CFB_SLOT_TYPE_NULL (0)
 #define CFB_SLOT_TYPE_NODE (8)

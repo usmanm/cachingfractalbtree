@@ -62,16 +62,16 @@ int main(int argc, char *argv[])
 
 	char m[] = {
 		CFB_SLOT_TYPE_NODE, 2,
-		2, 0, 0, 0,
-		4, 0, 0, 0,
-		8, 0, 0, 0,
+		3, 0, 0, 0,
+		6, 0, 0, 0,
+		0, 0, 0, 0,
 		CFB_SLOT_TYPE_NODE, 2,
 		1, 0, 0, 0,
 		2, 0, 0, 0,
 		0, 0, 0, 0,
 		CFB_SLOT_TYPE_NODE, 2,
 		3, 0, 0, 0,
-		4, 0, 0, 0,
+		5, 0, 0, 0,
 		0, 0, 0, 0,
 		CFB_SLOT_TYPE_NODE, 2,
 		6, 0, 0, 0,
@@ -81,16 +81,17 @@ int main(int argc, char *argv[])
 		0, 0, 0, 0,
 		0, 0, 0, 0,
 		0, 0, 0, 0,
-		CFB_LEAF_TYPE_TUPLE, 1, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_TUPLE, 2, 0, 0, 0, 0, 0, 0, 0,
+		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
+		CFB_LEAF_TYPE_VAL, 1, 0, 0, 0, 0, 0, 0, 0,
+		CFB_LEAF_TYPE_VAL, 2, 0, 0, 0, 0, 0, 0, 0,
 		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
 		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_TUPLE, 3, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_TUPLE, 4, 0, 0, 0, 0, 0, 0, 0,
+		CFB_LEAF_TYPE_VAL, 3, 0, 0, 0, 0, 0, 0, 0,
+		CFB_LEAF_TYPE_VAL, 5, 0, 0, 0, 0, 0, 0, 0,
 		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
 		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_TUPLE, 6, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_TUPLE, 7, 0, 0, 0, 0, 0, 0, 0,
+		CFB_LEAF_TYPE_VAL, 6, 0, 0, 0, 0, 0, 0, 0,
+		CFB_LEAF_TYPE_VAL, 7, 0, 0, 0, 0, 0, 0, 0,
 		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
 		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
 		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -135,8 +136,10 @@ int main(int argc, char *argv[])
 
 	test_fb_insert(&tree, 3, 0xCA);
 	test_fb_get(&tree, 3);
-	test_fb_insert(&tree, 5, 0xCB);
-	test_fb_get(&tree, 5);
+	test_fb_insert(&tree, 4, 0xCB);
+	test_fb_get(&tree, 4);
+	test_fb_insert(&tree, 8, 0xCC);
+	test_fb_get(&tree, 8);
 
 	fb_destr_tree(&tree);
 	return EXIT_SUCCESS;

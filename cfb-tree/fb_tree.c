@@ -44,7 +44,7 @@ void fb_init_tree(
 	size_t best_used = 0;
 	size_t best_nodes = 0;
 	size_t best_leaves = 0;
-	// set a brancing factor
+	// set a branching factor
 	for (size_t b = 2; b <= max_branching_factor; ++b)
 	{
 		// set a height
@@ -191,18 +191,32 @@ static inline size_t _fb_search_node(
 		assert(false);
 	}
 
-	for (uint8_t i = 0; i < node->keyc; ++i)
+	// smaller than first key
+	if (key < node->keyv[0])
 	{
-		if (key <= node->keyv[i])
+		*child = 0;
+		*status = CFB_FOUND_RANGE;
+		return tree->block_bfactor * node_pos + 1;
+	}
+
+	// bounds of range being considered
+	fb_key low = node->keyv[0];
+	fb_key high = 0;
+	for (uint8_t i = 1; i < node->keyc; ++i)
+	{
+		high = node->keyv[i];
+		if (key >= low && key < high)
 		{
 			*child = i;
-			*status = key == node->keyv[i] ? CFB_FOUND_EXACT : CFB_FOUND_RANGE;
+			*status = key == low ? CFB_FOUND_EXACT : CFB_FOUND_RANGE;
 			return tree->block_bfactor * node_pos + 1 + i;
 		}
+		low = high;
 	}
 	
+	// larger than last key
 	*child = node->keyc;
-	*status = CFB_FOUND_RANGE;
+	*status = key == high ? CFB_FOUND_EXACT : CFB_FOUND_RANGE;
 	return tree->block_bfactor * node_pos + 1 + node->keyc;
 }
 
@@ -291,7 +305,7 @@ void _fb_get(
 
 	*found = false;
 	*tuple_pos = leaf.pos;
-	if (leaf.type == CFB_LEAF_TYPE_TUPLE && *status == CFB_FOUND_EXACT)
+	if (leaf.type == CFB_LEAF_TYPE_VAL && *status == CFB_FOUND_EXACT)
 	{
 		*found = true;
 	}
@@ -329,7 +343,7 @@ static inline void _fb_insert_node(
 	fb_key last = key;
 	fb_key tmp;
 	size_t pos = SIZE_MAX;
-	for (size_t i = 0; i <= node->keyc; ++i)
+	for (size_t i = 0; i < node->keyc; ++i)
 	{
 		if (node->keyv[i] > key)
 		{
@@ -339,6 +353,7 @@ static inline void _fb_insert_node(
 			last = tmp;
 		}
 	}
+	node->keyv[node->keyc] = last;
 
 	++node->keyc;
 }
@@ -351,10 +366,15 @@ static inline void _fb_insert_leaf(
 {
 	fb_leaf buff;
 	fb_leaf next;
-	next.type = CFB_LEAF_TYPE_TUPLE;
+	next.type = CFB_LEAF_TYPE_VAL;
 	next.pos = value;
+
+	// interval after the one we would have looked at
+	// when inserting b:
+	// [a;c) -> [a;b)[b;c)
+	++target;
 	
-	for (size_t i = 0; i < tree->block_bfactor - child; ++i)
+	for (size_t i = 0; i < tree->block_bfactor - (child + 1); ++i)
 	{
 		buff = target[i];
 		target[i] = next;
@@ -417,7 +437,6 @@ void fb_insert(
 	}
 	else // insert an item that was not present
 	{
-		printf("inserting...\n");
 		_fb_insert_node(tree, block, old_node_pos, key);
 		_fb_insert_leaf(tree, target, child, value);
 
