@@ -21,7 +21,6 @@ void test_heap() {
     t.id = i;
     strncpy((char *) &t.name, "Usman Masood Tester", 19);
     t.name[19] = i;
-    memset(&t.dob, 0x58, 8); 
     p = heap_insert(&t);
     assert(p == ((i-1) * sizeof(tuple_t)));
   }
@@ -30,7 +29,7 @@ void test_heap() {
     tuple_t t;
     char str[] = "Usman Masood Tester";
     heap_search(sizeof(tuple_t) * (i-1), &t);
-    assert(t.id == i);
+    assert(t.id == (uint32_t) i);
     assert(t.name[19] == i);
     assert(memcmp(&t.name, &str, 19) == 0);
   }
@@ -78,8 +77,22 @@ void test_bt_split() {
   }
 
   for (i = 1; i <= 20000; i++) {
-    if (i % 3) continue;
     assert(i == (int) btree_search(i));
+  }
+
+  // Check updates as well!
+  for (i = 1; i <= 20000; i++) {
+    if ((i % 3) == 0) continue;
+    btree_insert(i, i + 1);
+  }
+
+  for (i = 1; i <= 20000; i++) {
+    if ((i % 3) == 0) {
+      assert(i == (int) btree_search(i));
+    }
+    else {
+      assert((i + 1) == (int) btree_search(i));
+    }
   }
 
   printf("B+ Tree (Split) tests successful!\n");
@@ -88,7 +101,7 @@ void test_bt_split() {
 int main() {
   if (TEST) {
     test_heap();
-    //    test_bt_no_split();
+    test_bt_no_split();
     test_bt_split();
   }
 

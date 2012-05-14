@@ -396,8 +396,8 @@ int btree_insert(key_t key, pointer_t value) {
   n = find_slot(key, node, 0);
 
   // Update case
-  if (n < node->num_keys && key == node->keys[n]) {
-    node->values[n] = value;
+  if (n > 0 && node->keys[n-1] == key) {
+    node->values[n-1] = value;
     flush_node(node);
     goto end;
   }

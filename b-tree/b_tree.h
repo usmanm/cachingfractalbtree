@@ -26,9 +26,9 @@ typedef uint32_t pointer_t;
 
 // Tuple
 struct _tuple_t {
-  int32_t id;
+  uint32_t id;
   char name[20];
-  char dob[8];
+  uint32_t items[5]; 
 }
 __attribute__((packed));
 typedef struct _tuple_t tuple_t;
