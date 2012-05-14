@@ -4,8 +4,10 @@
 #include <string.h>
 
 #include "b_tree.h"
+#include "benchmark.h"
 
-#define TEST 1
+#define TEST 0
+#define BENCHMARK 1
 
 void test_heap() {
   int i;
@@ -103,6 +105,14 @@ int main() {
     test_heap();
     test_bt_no_split();
     test_bt_split();
+  }
+
+  if (BENCHMARK) {
+    uint32_t n = 100000;
+    init_benchmark();
+    load_tables(n);
+    test_range(20000, n);
+    test_lookups(20000, n);
   }
 
   return 0;
