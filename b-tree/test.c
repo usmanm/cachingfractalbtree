@@ -67,11 +67,18 @@ void test_bt_split() {
 
   printf("Testing B+ Tree (Split)...\n");
 
-  for (i = 1; i <= 20000; i++) {
+  for (i = 20000; i >= 1; i--) {
+    if ((i % 3) != 0) continue;
     btree_insert(i, i);
   }
 
   for (i = 1; i <= 20000; i++) {
+    if ((i % 3) == 0) continue;
+    btree_insert(i, i);
+  }
+
+  for (i = 1; i <= 20000; i++) {
+    if (i % 3) continue;
     assert(i == (int) btree_search(i));
   }
 
@@ -81,7 +88,7 @@ void test_bt_split() {
 int main() {
   if (TEST) {
     test_heap();
-    test_bt_no_split();
+    //    test_bt_no_split();
     test_bt_split();
   }
 

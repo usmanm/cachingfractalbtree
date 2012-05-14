@@ -10,7 +10,8 @@
 #include <unistd.h>
 #include <string.h>
 
-#define DEBUG 1
+#define DEBUG 0
+#define DEBUGX 0
 
 void load_btree(btree_t *bt) {
   size_t size;
@@ -77,6 +78,15 @@ void flush_node(node_t *n) {
   size = write(fp, n, sizeof(node_t));
   close(fp);
 
+  if (DEBUGX) {
+    printf("FN [%d]: ", n->offset);
+    uint32_t j = 0;
+    for (j = 0; j < MAXKEYS; j++) {
+      printf("(%d, %d) ", n->keys[j], n->values[j]);
+    }
+    printf("(-, %d)\n", n->values[MAXKEYS]);
+  }
+
   assert(size == sizeof(node_t));
 }
 
@@ -95,6 +105,15 @@ void get_node(node_t *n, pointer_t offset) {
   fseek(fp, offset, SEEK_SET);
   size = fread(n, 1, sizeof(node_t), fp);
   fclose(fp);
+
+  if (DEBUGX) {
+    printf("GN [%d]: ", n->offset);
+    uint32_t j = 0;
+    for (j = 0; j < MAXKEYS; j++) {
+      printf("(%d, %d) ", n->keys[j], n->values[j]);
+    }
+    printf("(-, %d)\n", n->values[MAXKEYS]);
+  }
 
   assert(size == sizeof(node_t));
 }
@@ -139,7 +158,7 @@ uint32_t find_slot(key_t key, node_t *n, int exact) {
 // Only for non-full leaf nodes
 void insert_to_leaf(node_t *node, key_t key, pointer_t value) {
   uint32_t n;
-  printf("Insert to leaf... [%d, %d]...\n", key, value);
+  if (DEBUG) printf("Insert to leaf... [%d, %d]...\n", key, value);
   n = find_slot(key, node, 0);
   memmove(&node->keys[n+1], &node->keys[n], 
 	  (MAXKEYS-n-1) * sizeof(key_t));
@@ -153,12 +172,12 @@ void insert_to_leaf(node_t *node, key_t key, pointer_t value) {
 // Only for non-full leaf nodes
 void insert_to_node_left(node_t *node, key_t key, pointer_t value) {
   assert(node->type == INNER);
-  printf("Insert to inner node... [%d, %d]...\n", key, value);
+  if (DEBUG) printf("Insert to inner node... [%d, %d]...\n", key, value);
   uint32_t n;
   n = find_slot(key, node, 0);
   memmove(&node->keys[n+1], &node->keys[n], 
 	  (MAXKEYS-n-1) * sizeof(key_t));
-  memmove(&node->values[n+2], &node->values[n], 
+  memmove(&node->values[n+2], &node->values[n+1], 
 	  (MAXKEYS-n-1) * sizeof(pointer_t));
   node->keys[n] = key;
   node->values[n+1] = value;
@@ -170,7 +189,10 @@ pointer_t split_node(node_t *node, node_t **path, int i, key_t key,
   assert(node->num_keys == MAXKEYS);
   assert(path[i] == node);
 
-  printf("Splitting node [%d, %d, %d]...\n", node->offset, node->num_keys, i);
+  if (DEBUG) {
+    printf("Splitting node [%d, %d, %d]...\n", node->offset, 
+	   node->num_keys, i);
+  }
 
   pointer_t r = 0;
   key_t k;
@@ -186,9 +208,9 @@ pointer_t split_node(node_t *node, node_t **path, int i, key_t key,
     memset(&node->keys[MAXKEYS/2], 0, 
 	   (MAXKEYS/2 + (MAXKEYS % 2)) * sizeof(key_t));
     memcpy(&succ->values[0], &node->values[MAXKEYS/2], 
-	   (MAXKEYS/2 + (MAXKEYS % 2) + 1) * sizeof(key_t));
+	   (MAXKEYS/2 + (MAXKEYS % 2)) * sizeof(key_t));
     memset(&node->values[MAXKEYS/2], 0, 
-	   (MAXKEYS/2 + (MAXKEYS % 2) + 1) * sizeof(key_t));
+	   (MAXKEYS/2 + (MAXKEYS % 2)) * sizeof(key_t));
 
     node->num_keys = MAXKEYS/2;
     succ->num_keys = MAXKEYS/2 + (MAXKEYS % 2);
@@ -208,6 +230,8 @@ pointer_t split_node(node_t *node, node_t **path, int i, key_t key,
     int direction = 0;
     key_t median = key;
 
+    get_node(node, node->offset);
+
     if (key > node->keys[MAXKEYS/2]) {
       direction = 1;
       median = node->keys[MAXKEYS/2];
@@ -218,6 +242,9 @@ pointer_t split_node(node_t *node, node_t **path, int i, key_t key,
     }
 
     if (direction == 0) {
+      if (DEBUG) {
+	printf("Case 0 Median, K, V =  %d, %d, %d\n", median, key, value);
+      }
       memcpy(&succ->keys[0], &node->keys[MAXKEYS/2], 
 	     (MAXKEYS/2 + (MAXKEYS % 2)) * sizeof(key_t));
       memset(&node->keys[MAXKEYS/2], 0, 
@@ -231,6 +258,9 @@ pointer_t split_node(node_t *node, node_t **path, int i, key_t key,
       succ->num_keys = MAXKEYS/2 + (MAXKEYS % 2);
     }
     else if (direction == 1) {
+      if (DEBUG) {
+	printf("Case 1 Median, K, V =  %d, %d, %d\n", median, key, value);
+      }
       memcpy(&succ->keys[0], &node->keys[MAXKEYS/2 + 1], 
 	     (MAXKEYS/2 + (MAXKEYS % 2) - 1) * sizeof(key_t));
       memset(&node->keys[MAXKEYS/2], 0, 
@@ -239,11 +269,14 @@ pointer_t split_node(node_t *node, node_t **path, int i, key_t key,
 	     (MAXKEYS/2 + (MAXKEYS % 2)) * sizeof(key_t));
       memset(&node->values[MAXKEYS/2 + 1], 0, 
 	     (MAXKEYS/2 + (MAXKEYS % 2)) * sizeof(key_t));
-      insert_to_node_left(succ, key, value);
       node->num_keys = MAXKEYS/2;
-      succ->num_keys = MAXKEYS/2 + (MAXKEYS % 2);
+      succ->num_keys = MAXKEYS/2 + (MAXKEYS % 2) - 1;
+      insert_to_node_left(succ, key, value);
     }
     else {
+      if (DEBUG) {
+	printf("Case -1 Median, K, V =  %d, %d, %d\n", median, key, value);
+      }
       memcpy(&succ->keys[0], &node->keys[MAXKEYS/2], 
 	     (MAXKEYS/2 + (MAXKEYS % 2)) * sizeof(key_t));
       memset(&node->keys[MAXKEYS/2 - 1], 0, 
@@ -252,9 +285,27 @@ pointer_t split_node(node_t *node, node_t **path, int i, key_t key,
 	     (MAXKEYS/2 + (MAXKEYS % 2) + 1) * sizeof(key_t));
       memset(&node->values[MAXKEYS/2], 0, 
 	     (MAXKEYS/2 + (MAXKEYS % 2) + 1) * sizeof(key_t));
+
+      if (DEBUGX) {
+	printf("GN [%d]: ", node->offset);
+	uint32_t j = 0;
+	for (j = 0; j < MAXKEYS; j++) {
+	  printf("(%d, %d) ", node->keys[j], node->values[j]);
+	}
+	printf("(-, %d)\n", node->values[MAXKEYS]);
+      }
+
+      if (DEBUGX) {
+	printf("GN [%d]: ", succ->offset);
+	uint32_t j = 0;
+	for (j = 0; j < MAXKEYS; j++) {
+	  printf("(%d, %d) ", succ->keys[j], succ->values[j]);
+	}
+	printf("(-, %d)\n", succ->values[MAXKEYS]);
+      }
+      node->num_keys = MAXKEYS/2 - 1;
+      succ->num_keys = MAXKEYS/2 + (MAXKEYS % 2);      
       insert_to_node_left(node, key, value);
-      node->num_keys = MAXKEYS/2;
-      succ->num_keys = MAXKEYS/2 + (MAXKEYS % 2);
     }
 
     k = median;
@@ -269,7 +320,7 @@ pointer_t split_node(node_t *node, node_t **path, int i, key_t key,
   if (i == -1) { // new root!
     node_t *root = (node_t *) malloc(sizeof(node_t));
     new_node(root, INNER);
-    printf("New root time! %d...\n", root->offset);
+    if (DEBUG) printf("New root time! %d...\n", root->offset);
     r = root->offset;
     root->num_keys = 1;
     root->keys[0] = k;

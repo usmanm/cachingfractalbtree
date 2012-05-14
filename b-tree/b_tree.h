@@ -15,6 +15,8 @@
 
 // Max # of keys in one node
 #define MAXKEYS ((NODESIZE - sizeof(char) - sizeof(uint32_t) - 2*sizeof(pointer_t)) / (sizeof(key_t) + sizeof(pointer_t))) 
+//#define MAXKEYS 4
+
 
 // Key
 typedef uint32_t key_t;
