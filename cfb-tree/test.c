@@ -5,43 +5,40 @@
 
 #include "fb_tree.c"
 
-/*void test_fb_search_node(fb_tree *tree, fb_block_h *block, int key)
+void test_fb_search_node(fb_tree *tree, fb_block_h *block, fb_key key, fb_pos node_pos)
 {
-	size_t node_pos = 0;
-	char status;
-	size_t child = 0;
-	size_t abs_child_pos = _fb_search_node(tree, block, node_pos, key, &child, &status);
-	printf("_fb_search_node: seek %i | status %i | abs_child_pos %zu | child %zu\n", 
-			key, (int)status, abs_child_pos, child);
+	bool exact;
+	fb_val result;
+	_fb_search_node(tree, block, node_pos, key, &exact, &result);
+	printf("fb_search_node: seek %i | exact %i | found_type %i | found_val %i | node %u\n",
+			key, (int)exact, result.type, result.value, node_pos);
 }
 
-void test_fb_search_block(fb_tree *tree, fb_block_h *block, int key)
+void test_fb_search_block(fb_tree *tree, fb_block_h *block, fb_key key)
 {
-	char status;
-	fb_leaf leaf;
-	size_t leaf_pos = 0;
-	size_t node_pos = 0;
-	size_t child = 0;
-	_fb_search_block(tree, block, key, &node_pos, &leaf, &leaf_pos, &child, &status);
-	printf("_fb_search_block: seek %i | status %i | content %zu | node_pos %zu | leaf_pos %zu | child %zu\n",
-			key, (int)status, leaf.pos, node_pos, leaf_pos, child);
+	bool exact;
+	fb_val result;
+	fb_pos node_pos;
+	_fb_search_block(tree, block, key, &exact, &result, &node_pos);
+	printf("fb_search_block: seek %i | exact %i | found_type %i | found_val %i | node %u\n",
+			key, (int)exact, result.type, result.value, node_pos);
 }
 
 void test_fb_get(fb_tree *tree, int key)
 {
-	bool found;
-	size_t tuple_pos, block_pos, node_pos, leaf_pos, child;
-	char status;
-	_fb_get(tree, key, &found, &tuple_pos, &block_pos, &node_pos, &leaf_pos, &child, &status);
-	printf("_fb_get: seek %i | found %i | status %i | content %zu | block_pos %zu | node_pos %zu | leaf_pos %zu | child %zu \n",
-			key, (int)found, (int)status, tuple_pos, block_pos, node_pos, leaf_pos, child);
+	bool exact;
+	fb_val result;
+	fb_pos block_pos, node_pos = 0;
+	_fb_get(tree, key, &exact, &result, &block_pos, &node_pos);
+	printf("fb_get: seek %i | exact %i | found_type %i | found_val %i | block %u | node %u\n",
+			key, (int)exact, result.type, result.value, block_pos, node_pos);
 }
 
-void test_fb_insert(fb_tree *tree, int key, size_t val)
+void test_fb_insert(fb_tree *tree, fb_key key, uint32_t val)
 {
 	fb_insert(tree, key, val);
-	printf("fb_insert: key %i | val: %zu\n", key, val);
-}*/
+	printf("fb_insert: key %i | val: %u\n", key, val);
+}
 
 int main(int argc, char *argv[])
 {
@@ -59,7 +56,11 @@ int main(int argc, char *argv[])
 
 	fb_tree tree;
 	fb_init_tree(&tree, argv[1], block, slot, bfactor);
-	//fb_block_h *block_h = tree.root;
+	
+	test_fb_insert(&tree, 0xAA, 0xBB);
+	test_fb_search_node(&tree, tree.root, 0xAA, 0);
+	test_fb_search_block(&tree, tree.root, 0xAA);
+	test_fb_get(&tree, 0xAA);
 
 	/*char m[] = {
 		CFB_SLOT_TYPE_NODE, 2,

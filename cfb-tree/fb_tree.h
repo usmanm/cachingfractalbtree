@@ -8,7 +8,7 @@
 #define CFB_VALUE_TYPE_NULL (0)
 #define CFB_VALUE_TYPE_NODE (1)
 #define CFB_VALUE_TYPE_BLOCK (2)
-#define CFB_VALUE_TYPE_VALUE (4)
+#define CFB_VALUE_TYPE_CNTNT (4)
 
 #define CFB_SLOT_TYPE_CACHE (8)
 #define CFB_SLOT_TYPE_NODE (16)
@@ -153,16 +153,16 @@ void fb_destr_tree(
  * @param[out] found Whether the key is in the tree
  * @param[out] value The position of the tuple for key 'key'
  */
-/*void fb_get(
+void fb_get(
 		fb_tree *tree,
 		fb_key key,
-		bool *found,
-		size_t *value);*/
+		bool *exact,
+		uint32_t *result);
 
-/*void fb_insert(
+void fb_insert(
 		fb_tree *tree,
 		fb_key key,
-		fb_tuple tuple);*/
+		uint32_t value);
 
 #endif
 
