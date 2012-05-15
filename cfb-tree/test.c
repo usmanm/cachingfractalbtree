@@ -61,6 +61,12 @@ int main(int argc, char *argv[])
 	test_fb_search_node(&tree, tree.root, 0xAA, 0);
 	test_fb_search_block(&tree, tree.root, 0xAA);
 	test_fb_get(&tree, 0xAA);
+	test_fb_insert(&tree, 0xAA, 0xCC);
+	test_fb_get(&tree, 0xAA);
+	test_fb_insert(&tree, 0x99, 0xDD);
+	test_fb_get(&tree, 0xAA);
+	test_fb_get(&tree, 0x99);
+	test_fb_get(&tree, 0xCC);
 
 	/*char m[] = {
 		CFB_SLOT_TYPE_NODE, 2,

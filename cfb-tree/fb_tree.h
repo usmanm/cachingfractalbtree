@@ -121,6 +121,9 @@ struct _fb_tree
 
 	// the root block
 	fb_block_h *root;
+
+	// the first mmap'd page for the root
+	char *root_mptr;
 }
 __attribute__((packed));
 

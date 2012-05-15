@@ -9,6 +9,26 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+typedef struct _fb_node_data fb_node_data;
+struct _fb_node_data
+{
+	fb_slot_h *slot;
+	fb_key *keys;
+	fb_val *vals;
+};
+
+static inline fb_node_data _fb_node_content(
+		fb_tree *tree,
+		fb_block_h *block,
+		fb_pos node_pos)
+{
+	fb_node_data data;
+	data.slot = (fb_slot_h *)(block->body + node_pos * tree->slot_size);
+	data.keys = (fb_key *)data.slot->body;
+	data.vals = (fb_val *)(data.slot->body + tree->kfactor * sizeof(fb_key));
+	return data;
+}
+
 static void _fb_init_node(
 		fb_tree *tree,
 		fb_block_h *block,
@@ -16,19 +36,17 @@ static void _fb_init_node(
 		fb_key key,
 		fb_val value)
 {
-	fb_slot_h *slot = (fb_slot_h *)(block->body + node_pos * tree->slot_size);
-	fb_key *keys = (fb_key *)slot->body;
-	fb_val *vals = (fb_val *)(slot->body + tree->kfactor * sizeof(fb_key));
+	fb_node_data node = _fb_node_content(tree, block, node_pos);
 	
 	for (fb_pos i = 0; i < tree->bfactor; ++i)
 	{
-		vals[i].type = CFB_VALUE_TYPE_NULL;
+		node.vals[i].type = CFB_VALUE_TYPE_NULL;
 	}
 
-	slot->type = CFB_SLOT_TYPE_NODE;
-	slot->cont = 1;
-	keys[0] = key;
-	vals[1] = value;
+	node.slot->type = CFB_SLOT_TYPE_NODE;
+	node.slot->cont = 1;
+	node.keys[0] = key;
+	node.vals[1] = value;
 	++tree->content;
 }
 
@@ -108,6 +126,7 @@ void fb_init_tree(
 
 	ftruncate(tree->index_fd, block_size);
 	tree->root = mmap(NULL, block_size, PROT_READ | PROT_WRITE, MAP_SHARED, tree->index_fd, 0);
+	tree->root_mptr = (char *)tree->root;
 
 	_fb_init_block(tree, tree->root, CFB_BLOCK_TYPE_ROOT | CFB_BLOCK_TYPE_LEAF, 0);
 	float usage_density = tree->block_nodes / (float)tree->block_slots;
@@ -134,10 +153,34 @@ void fb_init_tree(
 
 void fb_destr_tree(fb_tree *tree)
 {
-	munmap(tree->root, tree->block_size);
+	munmap(tree->root_mptr, tree->block_size);
 	close(tree->index_fd);
 }
 
+static inline fb_pos _fb_get_fresh_node(
+		fb_tree *tree,
+		fb_block_h *block)
+{
+	fb_slot_h *slot = (fb_slot_h *)block->body;
+	fb_pos node_pos;
+	for (size_t i = 0; i < tree->block_slots; ++i)
+	{
+		if (slot->type == CFB_SLOT_TYPE_CACHE)
+		{
+			node_pos = i;
+			break;
+		}
+	}
+	
+	fb_node_data node = _fb_node_content(tree, block, node_pos);
+	node.slot->type = CFB_SLOT_TYPE_NODE;
+	node.slot->cont = 0;
+	for (fb_pos i = 0; i < tree->bfactor; ++i)
+	{
+		node.vals[i].type = CFB_VALUE_TYPE_NULL;
+	}
+	return node_pos;
+}
 
 /**
  * @param[in] tree The tree to query
@@ -154,26 +197,23 @@ static inline void _fb_search_node(
 		bool *exact,
 		fb_val *result)
 {
-	fb_slot_h *node = (fb_slot_h *)(block->body + node_pos * tree->slot_size);
-	fb_key *keys = (fb_key *)node->body;
-	fb_val *vals = (fb_val *)(node->body + tree->kfactor * sizeof(fb_key));
-	
-	assert (node->cont > 0);
+	fb_node_data node = _fb_node_content(tree, block, node_pos);
+	assert (node.slot->cont > 0);
 
 	// bounds of range being considered
-	for (uint8_t i = 0; i < node->cont; ++i)
+	for (uint8_t i = 0; i < node.slot->cont; ++i)
 	{
-		if (key < keys[i])
+		if (key < node.keys[i])
 		{
-			*exact = ((i > 0) && (keys[i-1] == key)) ? true : false;
-			*result = vals[i];
+			*exact = ((i > 0) && (node.keys[i-1] == key)) ? true : false;
+			*result = node.vals[i];
 			return;
 		}
 	}
 	
 	// larger or eq than last key
-	*exact = keys[node->cont - 1] == key ? true : false;
-	*result = vals[node->cont];
+	*exact = node.keys[node.slot->cont - 1] == key ? true : false;
+	*result = node.vals[node.slot->cont];
 }
 
 
@@ -234,7 +274,6 @@ void _fb_get(
 {
 	if (tree->content == 0)
 	{
-		printf("damn!\n");
 		result->type = CFB_VALUE_TYPE_NULL;
 		*exact = false;
 		*block_pos = 0;
@@ -343,7 +382,7 @@ static inline void _fb_insert_leaf(
 		next = buff;
 	}
 }
-1
+
 static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t node_pos)
 {
 	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
@@ -392,36 +431,134 @@ static inline void _fb_split_node(
 	}
 }*/
 
+void _fb_insert_node(
+		fb_tree *tree,
+		fb_block_h *block,
+		fb_pos node_pos,
+		fb_key key,
+		fb_val val);
+
+void _fb_split_node(
+		fb_tree *tree,
+		fb_block_h *block,
+		fb_pos node_pos)
+{
+	fb_node_data node = _fb_node_content(tree, block, node_pos);
+	fb_pos next_pos = _fb_get_fresh_node(tree, block);
+	fb_node_data next = _fb_node_content(tree, block, next_pos);
+	next.slot->parent = node.slot->parent;
+
+	size_t target_size = tree->bfactor / 2;
+	for (size_t i = target_size; node.slot->cont > target_size; ++i)
+	{
+		next.keys[i-target_size] = node.keys[i];
+		next.vals[i-target_size+1] = node.vals[i+1];
+	}
+
+	fb_val val;
+	val.type = CFB_VALUE_TYPE_NODE;
+	val.node_pos = next_pos;
+	_fb_insert_node(tree, block, node.slot->parent, next.keys[0], val);
+}
+
+static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t node_pos)
+{
+	fb_node_data node = _fb_node_content(tree, block, node_pos);
+	return node.slot->cont == tree->kfactor ? true : false;
+}
+
+void _fb_insert_node(
+		fb_tree *tree,
+		fb_block_h *block,
+		fb_pos node_pos,
+		fb_key key,
+		fb_val val)
+{
+	fb_node_data node = _fb_node_content(tree, block, node_pos);
+	
+	fb_key key_tmp;
+	fb_key key_old = key;
+	fb_val val_tmp;
+	fb_val val_old = val;
+	for (size_t i = 0; i < node.slot->cont; ++i)
+	{
+		if (node.keys[i] > key_old)
+		{
+			key_tmp = node.keys[i];
+			val_tmp = node.vals[i+1];
+			node.keys[i] = key_old;
+			node.vals[i+1] = val_old;
+			key_old = key_tmp;
+			val_old = val_tmp;
+		}
+	}
+	node.keys[node.slot->cont] = key_old;
+	node.vals[node.slot->cont+1] = val_old;
+
+	++node.slot->cont;
+	++tree->content;
+
+	if (_fb_node_needs_split(tree, block, node_pos))
+	{
+		if (node_pos != 0)
+		{
+			_fb_split_node(tree, block, node_pos);
+		}
+		else
+		{
+			_fb_split_block(tree, block);
+		}
+	}
+}
+
+void _fb_replace_value(
+		fb_tree *tree,
+		fb_block_h *block,
+		fb_pos node_pos,
+		fb_key key,
+		fb_val val)
+{
+	fb_node_data node = _fb_node_content(tree, block, node_pos);
+	
+	for (size_t i = 0; i < node.slot->cont; ++i)
+	{
+		if (node.keys[i] == key)
+		{
+			node.vals[i+1] = val;
+		}
+	}
+}
+
 void fb_insert(
 		fb_tree *tree,
 		fb_key key,
 		uint32_t value)
 {
-	bool found;
-	size_t old_tuple_pos;
-	size_t old_block_pos;
-	size_t old_node_pos;
-	size_t old_leaf_pos;
+	bool exact;
+	fb_pos block_pos;
+	fb_pos node_pos;
 	
 	fb_val val;
 	val.type = CFB_VALUE_TYPE_CNTNT;
 	val.value = value;
+	
+	long page_size = sysconf(_SC_PAGESIZE);
+	char *mptr = NULL;
 
-	if (tree->content == 0)
+	if (tree->content == 0) // insertion on empty tree
 	{
 		_fb_init_node(tree, tree->root, 0, key, val);
 		return;
 	}
 
-	/*long page_size = sysconf(_SC_PAGESIZE);
-	char *mptr = NULL;
+	// find the leaf where the result should be
+	fb_val result;
+	_fb_get(tree, key, &exact, &result, &block_pos, &node_pos);
 	
-	_fb_get(tree, key, &found, &old_tuple_pos, &old_block_pos, &old_node_pos, &old_leaf_pos, &child, &status);
-	
-	fb_block_h *block = tree->root;
-	if (old_block_pos != 0) // open the block owning the leaf
+	fb_block_h *block = NULL;
+	if (block_pos != 0) // open the block owning the leaf
 	{
-		size_t offset = (old_block_pos / page_size) * page_size;
+		size_t offset = (block_pos / page_size) * page_size;
 		mptr = mmap(NULL,
 			tree->block_size,
 			PROT_READ | PROT_WRITE,
@@ -429,30 +566,27 @@ void fb_insert(
 			tree->index_fd,
 			offset);
 		assert(mptr != MAP_FAILED);
-		block = (fb_block_h *)(mptr + old_block_pos - offset);
+		block = (fb_block_h *)(mptr + block_pos - offset);
 	}
-
-	fb_leaf *target = ((fb_leaf *)(block->body + tree->block_leaves_off)) + old_leaf_pos;
-	if (found) // replace an existing leaf
+	else // the leaf is owned by the root, which is always ready
 	{
-		target->pos = value;
-		goto cleanup;
+		block = tree->root;
 	}
-	else // insert an item that was not present
+
+	if (exact) // exact match, replace value
 	{
-		_fb_insert_node(tree, block, old_node_pos, key);
-		_fb_insert_leaf(tree, target, child, value);
-
-		_fb_node_needs_split(tree, block, old_node_pos);
-		// TODO
+		_fb_replace_value(tree, block, node_pos, key, val);
+		return;
+	}
+	else // true insertion
+	{
+		_fb_insert_node(tree, block, node_pos, key, val);
 	}
 
-cleanup:
-
-	if (block != tree->root)
+	if (mptr != NULL)
 	{
 		munmap(mptr, tree->block_size);
-	}*/
+	}
 }
 
 /*void fb_remove(
