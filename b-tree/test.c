@@ -6,6 +6,9 @@
 #include "b_tree.h"
 #include "benchmark.h"
 
+#define NUMITEMS 10000
+#define NUMLOOKUPS 2000
+
 #define TEST 0
 #define BENCHMARK 1
 
@@ -108,11 +111,10 @@ int main() {
   }
 
   if (BENCHMARK) {
-    uint32_t n = 100000;
     init_benchmark();
-    load_tables(n);
-    test_range(20000, n);
-    test_lookups(20000, n);
+    load_tables(NUMITEMS);
+    //    test_range(NUMLOOKUPS, NUMITEMS);
+    test_lookups(NUMLOOKUPS, NUMITEMS);
   }
 
   return 0;

@@ -28,7 +28,7 @@ void load_tables(uint32_t numofitems) {
     insert(i, &t);
   }
 
-  printf("Table loaded in %lu!\n", (unsigned long) (time(NULL) - stime));
+  printf("Table loaded in %lu s.\n", (unsigned long) (time(NULL) - stime));
 }
 
 void test_range(uint32_t rangesize, uint32_t numofitems) {
@@ -51,7 +51,7 @@ void test_range(uint32_t rangesize, uint32_t numofitems) {
     rangesize--;
   }
 
-  printf("Range tested in %lu!\n", (unsigned long) (time(NULL) - stime));
+  printf("Range tested in %lu s.\n", (unsigned long) (time(NULL) - stime));
 }
 
 void test_lookups(uint32_t numoflookups, uint32_t numofitems) {
@@ -74,6 +74,5 @@ void test_lookups(uint32_t numoflookups, uint32_t numofitems) {
     numoflookups--;
   }
 
-  printf("Lookups tested in %lu!\n", (unsigned long) (time(NULL) - stime));
+  printf("Lookups tested in %lu s.\n", (unsigned long) (time(NULL) - stime));
 }
-

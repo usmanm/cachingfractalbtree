@@ -6,7 +6,7 @@
 
 #define BTREEFILE "btree.db" // B+ tree file name
 #define HEAPFILE "table.db" // Data file name
-#define NODESIZE 4096 // Node size
+#define NODESIZE (4096*1) // Node size
 
 // Types of node
 #define INNER 0
