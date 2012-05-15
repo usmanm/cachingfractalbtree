@@ -29,12 +29,31 @@ static inline fb_node_data _fb_node_content(
 	return data;
 }
 
+void fb_print_block(fb_tree *tree, fb_block_h *block)
+{
+	printf(" --- block ---\n");
+	printf("type %i | cont %i | parent %i | root %i | height %i\n",
+			block->type, block->cont, block->parent, block->root, block->height);
+	for (size_t i = 0; i < tree->block_slots; ++i)
+	{
+		fb_node_data slot = _fb_node_content(tree, block, i);
+		if (slot.slot->type == CFB_SLOT_TYPE_CACHE)
+		{
+			//printf("> slot %zu is cache\n", i);
+		}
+		else
+		{
+			printf("> slot %zu: type %i | cont %i | parent % i\n",
+					i, slot.slot->type, slot.slot->cont, slot.slot->parent);
+		}
+	}
+	printf(" -------------\n");
+}
+
 static void _fb_init_node(
 		fb_tree *tree,
 		fb_block_h *block,
-		fb_pos node_pos,
-		fb_key key,
-		fb_val value)
+		fb_pos node_pos)
 {
 	fb_node_data node = _fb_node_content(tree, block, node_pos);
 	
@@ -44,10 +63,8 @@ static void _fb_init_node(
 	}
 
 	node.slot->type = CFB_SLOT_TYPE_NODE;
-	node.slot->cont = 1;
-	node.keys[0] = key;
-	node.vals[1] = value;
-	++tree->content;
+	node.slot->cont = 0;
+	++block->cont;
 }
 
 
@@ -58,6 +75,9 @@ static void _fb_init_block(
 {
 	block->type = type;
 	block->parent = parent;
+	block->root = 0;
+	block->cont = 0;
+	block->height = 0;
 
 	for (size_t s = 0; s < tree->block_slots; ++s)
 	{
@@ -161,25 +181,18 @@ static inline fb_pos _fb_get_fresh_node(
 		fb_tree *tree,
 		fb_block_h *block)
 {
-	fb_slot_h *slot = (fb_slot_h *)block->body;
 	fb_pos node_pos;
-	for (size_t i = 0; i < tree->block_slots; ++i)
+	for (node_pos = 0; node_pos < tree->block_slots; ++node_pos)
 	{
-		if (slot->type == CFB_SLOT_TYPE_CACHE)
+		fb_node_data node = _fb_node_content(tree, block, node_pos);
+		if (node.slot->type == CFB_SLOT_TYPE_CACHE)
 		{
-			node_pos = i;
-			break;
+			_fb_init_node(tree, block, node_pos);
+			return node_pos;
 		}
 	}
-	
-	fb_node_data node = _fb_node_content(tree, block, node_pos);
-	node.slot->type = CFB_SLOT_TYPE_NODE;
-	node.slot->cont = 0;
-	for (fb_pos i = 0; i < tree->bfactor; ++i)
-	{
-		node.vals[i].type = CFB_VALUE_TYPE_NULL;
-	}
-	return node_pos;
+	fprintf(stderr, "ERROR: could not find room for a node\n");
+	exit(EXIT_FAILURE);
 }
 
 /**
@@ -235,17 +248,16 @@ static inline void _fb_search_block(
 		fb_val *result,
 		fb_pos *node_pos)
 {
-	*node_pos = 0;
+	*node_pos = block->root;
 	while (true)
 	{
 		fb_slot_h *slot = (fb_slot_h *)(block->body + *node_pos * tree->slot_size);
-		//printf("$ type %i\n", slot->type);
+		//printf("~ search_block node-type %i\n", slot->type);
 		if (slot->type == CFB_SLOT_TYPE_NODE)
 		{
 			_fb_search_node(tree, block, *node_pos, key, exact, result);
 
-			//printf("> type %i\n", result->type);
-			//printf("$ type %i\n", slot->type);
+			//printf("~ search_block leaf-type %i\n", result->type);
 			switch (result->type)
 			{
 				case CFB_VALUE_TYPE_NODE: *node_pos = result->node_pos; break;
@@ -441,23 +453,26 @@ void _fb_insert_node(
 void _fb_split_node(
 		fb_tree *tree,
 		fb_block_h *block,
-		fb_pos node_pos)
+		fb_pos node_pos,
+		fb_pos *next_pos)
 {
 	fb_node_data node = _fb_node_content(tree, block, node_pos);
-	fb_pos next_pos = _fb_get_fresh_node(tree, block);
-	fb_node_data next = _fb_node_content(tree, block, next_pos);
+	*next_pos = _fb_get_fresh_node(tree, block);
+	fb_node_data next = _fb_node_content(tree, block, *next_pos);
 	next.slot->parent = node.slot->parent;
 
 	size_t target_size = tree->bfactor / 2;
-	for (size_t i = target_size; node.slot->cont > target_size; ++i)
+	for (size_t i = target_size; i < node.slot->cont; ++i)
 	{
 		next.keys[i-target_size] = node.keys[i];
 		next.vals[i-target_size+1] = node.vals[i+1];
+		++next.slot->cont;
 	}
+	node.slot->cont -= next.slot->cont;
 
 	fb_val val;
 	val.type = CFB_VALUE_TYPE_NODE;
-	val.node_pos = next_pos;
+	val.node_pos = *next_pos;
 	_fb_insert_node(tree, block, node.slot->parent, next.keys[0], val);
 }
 
@@ -498,15 +513,35 @@ void _fb_insert_node(
 	++node.slot->cont;
 	++tree->content;
 
+	fb_pos next_pos;
 	if (_fb_node_needs_split(tree, block, node_pos))
 	{
-		if (node_pos != 0)
+		if (node_pos != block->root) // guaranteed to have one free node
 		{
-			_fb_split_node(tree, block, node_pos);
+			_fb_split_node(tree, block, node_pos, &next_pos);
 		}
 		else
 		{
-			_fb_split_block(tree, block);
+			if (block->height < tree->block_height)
+			{
+				// add a parent to the current root
+				fb_pos parent_pos =_fb_get_fresh_node(tree, block);
+				fb_node_data parent = _fb_node_content(tree, block, parent_pos);
+				parent.vals[0].type = CFB_VALUE_TYPE_NODE;
+				parent.vals[0].node_pos = node_pos;
+				block->root = parent_pos;
+				node.slot->parent = parent_pos;
+
+				++block->height;
+				
+				// split the former root
+				_fb_split_node(tree, block, node_pos, &next_pos);
+			}
+			else
+			{
+				// split block
+				assert(false);
+			}
 		}
 	}
 }
@@ -547,7 +582,8 @@ void fb_insert(
 
 	if (tree->content == 0) // insertion on empty tree
 	{
-		_fb_init_node(tree, tree->root, 0, key, val);
+		_fb_init_node(tree, tree->root, 0);
+		_fb_insert_node(tree, tree->root, 0, key, val);
 		return;
 	}
 

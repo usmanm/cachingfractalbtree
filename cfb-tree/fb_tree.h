@@ -73,7 +73,10 @@ struct _fb_slot_h
 struct _fb_block_h
 {
 	uint8_t type;
+	uint8_t cont;
 	fb_pos parent;
+	fb_pos root;
+	fb_pos height;
 
 	char body[0];
 
