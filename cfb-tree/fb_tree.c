@@ -9,131 +9,125 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-static void _fb_init_block(fb_tree *tree, fb_block_h* block, char type, size_t parent);
+static void _fb_init_node(
+		fb_tree *tree,
+		fb_block_h *block,
+		fb_pos node_pos,
+		fb_key key,
+		fb_val value)
+{
+	fb_slot_h *slot = (fb_slot_h *)(block->body + node_pos * tree->slot_size);
+	fb_key *keys = (fb_key *)slot->body;
+	fb_val *vals = (fb_val *)(slot->body + tree->kfactor * sizeof(fb_key));
+	
+	for (fb_pos i = 0; i < tree->bfactor; ++i)
+	{
+		vals[i].type = CFB_VALUE_TYPE_NULL;
+	}
+
+	slot->type = CFB_SLOT_TYPE_NODE;
+	slot->cont = 1;
+	keys[0] = key;
+	vals[1] = value;
+	++tree->content;
+}
+
+
+static void _fb_init_block(
+		fb_tree *tree,
+		fb_block_h* block,
+		uint8_t type, fb_pos parent)
+{
+	block->type = type;
+	block->parent = parent;
+
+	for (size_t s = 0; s < tree->block_slots; ++s)
+	{
+		fb_slot_h *slot = (fb_slot_h *)(block->body + s * tree->slot_size);
+		slot->type = CFB_SLOT_TYPE_CACHE;
+		slot->cont = 0;
+	}
+}
 
 void fb_init_tree(
 		fb_tree *tree,
 		const char *file,
 		size_t block_size,
-		size_t slot_size)
+		size_t slot_size,
+		size_t bfactor)
 {
-	assert(slot_size >= sizeof(fb_node_h));
-	assert(slot_size >= sizeof(fb_cache_h));
-	assert(block_size >= sizeof(fb_block_h));
-
 	tree->block_size = block_size;
 	tree->slot_size = slot_size;
 
-	size_t node_avail_body = slot_size - sizeof(fb_node_h);
-	size_t node_keys = node_avail_body / sizeof(fb_key);
-	size_t max_branching_factor = node_keys + 1 < UINT8_MAX ? node_keys + 1 : UINT8_MAX;
+	tree->block_slots = (block_size - sizeof(fb_block_h)) / slot_size;
 
-	size_t cache_avail_body = slot_size - sizeof(fb_node_h);
-	size_t cache_keys = cache_avail_body / sizeof(fb_tuple);
-
-	assert(node_keys >= 2); // otherwise we cannot split a node
-	assert(cache_keys >= 1);
-	tree->node_keys = node_keys;
-	tree->cache_tuples = cache_keys;
-
-	// empirically find the branching factor leading to least waste
-	// space is @f$\sum_{i=0}^h b^i \cdot \text{ (slot_size) } + b^{h+1} \cdot \text{ (leaf_size) }$
-	size_t best_b = 2;
-	size_t best_h = 1;
-	size_t best_req = 0;
-	size_t best_used = 0;
-	size_t best_nodes = 0;
-	size_t best_leaves = 0;
-	// set a branching factor
-	for (size_t b = 2; b <= max_branching_factor; ++b)
+	size_t cache_avail_body = slot_size - sizeof(fb_slot_h);
+	size_t cache_tuples = cache_avail_body / sizeof(fb_tuple);
+	tree->cache_tuples = cache_tuples;
+	
+	size_t min_slot_content = sizeof(fb_val) + (bfactor-1)*(sizeof(fb_key) + sizeof(fb_val));
+	if (min_slot_content > slot_size - sizeof(slot_size))
 	{
-		// set a height
-		size_t req_bytes = 0;
-		size_t used_bytes = 0;
-		size_t num_nodes = 0;
-		size_t num_leaves = 0;
-		for (size_t h = 1; used_bytes <= block_size; ++h)
-		{
-			// add space for the slots
-			req_bytes = sizeof(fb_block_h);
-			used_bytes = sizeof(fb_block_h);
-			for (size_t i = 0; i <= h; ++i)
-			{
-				req_bytes += pow(b, i) * slot_size;
-				used_bytes += pow(b, i) * (sizeof(fb_node_h) + sizeof(fb_key)*(b - 1));
-				num_nodes += pow(b, i);
-			}
-			// add space for the leaves
-			req_bytes += pow(b, h + 1) * sizeof(fb_leaf);
-			used_bytes += pow(b, h + 1) * sizeof(fb_leaf);
-			num_leaves = pow(b, h + 1);
-
-			//printf("b, h, req, used, density: %zu %zu %zu %zu %f\n",
-			//		b, h, req_bytes, used_bytes, used_bytes / (float)block_size);
-			if (req_bytes <= block_size)
-			{
-				// this (b,h) pair is a candidate
-				if (used_bytes > best_used)
-				{
-					best_b = b;
-					best_h = h;
-					best_req = req_bytes;
-					best_used = used_bytes;
-					best_nodes = num_nodes;
-					best_leaves = num_leaves;
-				}
-			}
-		}
+		fprintf(stderr, "ERROR: node cannot store enough key/value pairs for bfactor\n");
+		exit(EXIT_FAILURE);
 	}
 
-	tree->block_bfactor = best_b;
-	tree->block_height = best_h;
-	tree->block_nodes = best_nodes;
-	tree->block_leaves = best_leaves;
-	tree->block_leaves_off = block_size - best_leaves * sizeof(fb_leaf) - sizeof (fb_block_h);
-	tree->block_slots = tree->block_leaves_off / slot_size;
-	tree->blocks_alloc = 1;
-	tree->blocks_used = 1;
+	if (cache_tuples < 1)
+	{
+		fprintf(stderr, "ERROR: cache must fit at least 1 tuple\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if (bfactor < 3)
+	{
+		fprintf(stderr, "ERROR: a B+tree must have a bfactor > 2\n");
+		exit(EXIT_FAILURE);
+	}
+
+	tree->bfactor = bfactor;
+	tree->kfactor = bfactor - 1;
+	tree->content = 0;
+
+	tree->block_nodes = 0;
+	for (size_t h = 0; h < tree->block_slots; ++h)
+	{
+		tree->block_nodes += pow(bfactor, h);
+		if (tree->block_nodes <= tree->block_slots)
+		{
+			tree->block_height = h;
+		}
+		else
+		{
+			tree->block_nodes -= pow(bfactor, h);
+			break;
+		}
+	}
 
 	tree->index_fd = open(file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	assert(tree->index_fd != -1);
 
 	ftruncate(tree->index_fd, block_size);
 	tree->root = mmap(NULL, block_size, PROT_READ | PROT_WRITE, MAP_SHARED, tree->index_fd, 0);
-	_fb_init_block(tree, tree->root, CFB_BLOCK_TYPE_ROOT | CFB_BLOCK_TYPE_LEAF, 0);
 
-	float usage_density = best_used / (float)block_size;
+	_fb_init_block(tree, tree->root, CFB_BLOCK_TYPE_ROOT | CFB_BLOCK_TYPE_LEAF, 0);
+	float usage_density = tree->block_nodes / (float)tree->block_slots;
 	printf("index_fd %i\n"
 			"block_size %zu\n"
 			"slot_size %zu\n"
-			"blocks_alloc %zu\n"
-			"blocks_used %zu\n"
 			"block_slots %zu\n"
 			"block_nodes %zu\n"
-			"block_leaves %zu\n"
-			"node_keys %zu\n"
 			"cache_tuples %zu\n"
 			"block_bfactor %zu\n"
 			"block_height %zu\n"
-			"block_leaves_off %zu\n"
-			"%% used bytes %zu\n"
-			"%% required bytes %zu\n"
 			"%% density %f\n",
 			tree->index_fd,
 			tree->block_size,
 			tree->slot_size,
-			tree->blocks_alloc,
-			tree->blocks_used,
 			tree->block_slots,
 			tree->block_nodes,
-			tree->block_leaves,
-			tree->node_keys,
 			tree->cache_tuples,
-			tree->block_bfactor,
+			tree->bfactor,
 			tree->block_height,
-			tree->block_leaves_off,
-			best_used,
-			best_req,
 			usage_density);
 	
 }
@@ -144,81 +138,44 @@ void fb_destr_tree(fb_tree *tree)
 	close(tree->index_fd);
 }
 
-static void _fb_init_block(fb_tree *tree, fb_block_h* block, char type, size_t parent)
-{
-	block->type = type;
-	block->parent = parent;
-
-	for (size_t s = 0; s < tree->block_slots; ++s)
-	{
-		fb_cache_h *cache = (fb_cache_h *)(block->body + s * tree->slot_size);
-		cache->slot.type = CFB_SLOT_TYPE_CACHE;
-		cache->tuplec = 0;
-	}
-
-	fb_leaf *leaf = (fb_leaf *)(block->body + tree->block_leaves_off);
-	for (size_t l = 0; l < tree->block_leaves; ++l)
-	{
-		leaf->type = CFB_LEAF_TYPE_NULL;
-		leaf->pos = 0;
-		++leaf;
-	}
-}
 
 /**
  * @param[in] tree The tree to query
  * @param[in] block The block in the tree to query
- * @param[in] node_pos The position of the node to search in
+ * @param[in] node_pos The node to be scanned, must be an inner node
  * @param[in] key The key being searched
- * @param[out] child To which child of the node the leaf corresponds
- * @param[out] status Whether we found the exact item, the range containing it, or none
- * @return The absolute position of the child in the block
+ * @param[out] result Child position in block
  */
-static inline size_t _fb_search_node(
+static inline void _fb_search_node(
 		fb_tree *tree,
 		fb_block_h *block,
-		size_t node_pos,
+		fb_pos node_pos,
 		fb_key key,
-		size_t *child,
-		char *status)
+		bool *exact,
+		fb_val *result)
 {
-	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
-
-	if (node->keyc == 0)
-	{
-		// this should never happen
-		// if a slot is marked a node, it must have at least one key
-		assert(false);
-	}
-
-	// smaller than first key
-	if (key < node->keyv[0])
-	{
-		*child = 0;
-		*status = CFB_FOUND_RANGE;
-		return tree->block_bfactor * node_pos + 1;
-	}
+	fb_slot_h *node = (fb_slot_h *)(block->body + node_pos * tree->slot_size);
+	fb_key *keys = (fb_key *)node->body;
+	fb_val *vals = (fb_val *)(node->body + tree->kfactor * sizeof(fb_key));
+	
+	assert (node->cont > 0);
 
 	// bounds of range being considered
-	fb_key low = node->keyv[0];
-	fb_key high = 0;
-	for (uint8_t i = 1; i < node->keyc; ++i)
+	for (uint8_t i = 0; i < node->cont; ++i)
 	{
-		high = node->keyv[i];
-		if (key >= low && key < high)
+		if (key < keys[i])
 		{
-			*child = i;
-			*status = key == low ? CFB_FOUND_EXACT : CFB_FOUND_RANGE;
-			return tree->block_bfactor * node_pos + 1 + i;
+			*exact = ((i > 0) && (keys[i-1] == key)) ? true : false;
+			*result = vals[i];
+			return;
 		}
-		low = high;
 	}
 	
-	// larger than last key
-	*child = node->keyc;
-	*status = key == high ? CFB_FOUND_EXACT : CFB_FOUND_RANGE;
-	return tree->block_bfactor * node_pos + 1 + node->keyc;
+	// larger or eq than last key
+	*exact = keys[node->cont - 1] == key ? true : false;
+	*result = vals[node->cont];
 }
+
 
 /**
  * @param[in] tree The tree to search in
@@ -234,60 +191,67 @@ static inline void _fb_search_block(
 		fb_tree *tree,
 		fb_block_h *block,
 		fb_key key,
-		size_t *node_pos,
-		fb_leaf *leaf,
-		size_t *leaf_pos,
-		size_t *child,
-		char *status)
+		bool *exact,
+		fb_val *result,
+		fb_pos *node_pos)
 {
-	size_t node_pos_curr = 0;
-	size_t node_pos_old = 0;
-	*status = CFB_FOUND_NONE;
-
-	while (node_pos_curr < tree->block_nodes)
+	*node_pos = 0;
+	while (true)
 	{
-		fb_slot_h *slot = (fb_slot_h *)(block->body + node_pos_curr * tree->slot_size);
+		fb_slot_h *slot = (fb_slot_h *)(block->body + *node_pos * tree->slot_size);
+		//printf("$ type %i\n", slot->type);
 		if (slot->type == CFB_SLOT_TYPE_NODE)
 		{
-			// choose which child node to access
-			node_pos_old = node_pos_curr;
-			node_pos_curr = _fb_search_node(tree, block, node_pos_curr, key, child, status);
+			_fb_search_node(tree, block, *node_pos, key, exact, result);
+
+			//printf("> type %i\n", result->type);
+			//printf("$ type %i\n", slot->type);
+			switch (result->type)
+			{
+				case CFB_VALUE_TYPE_NODE: *node_pos = result->node_pos; break;
+				case CFB_VALUE_TYPE_NULL: return;
+				case CFB_VALUE_TYPE_BLOCK: return;
+				case CFB_VALUE_TYPE_CNTNT: return;
+				default:
+					fprintf(stderr, "ERROR: found leaf with unknown value\n");
+					assert(false);
+			}
 		}
 		else
 		{
-			// empty path (cache or uninitialized)
-			// just take the first virtual child
-			// status remains as per the last comparison
-			node_pos_curr = tree->block_bfactor * node_pos_curr + 1;
+			assert(false);
 		}
 	}
-	*node_pos = node_pos_old;
-	*leaf_pos = node_pos_curr - tree->block_nodes;
-	*leaf = *((fb_leaf *)(block->body + tree->block_leaves_off) + *leaf_pos);
 }
 
 void _fb_get(
 		fb_tree *tree,
 		fb_key key,
-		bool *found,
-		size_t *tuple_pos,
-		size_t *block_pos,
-		size_t *node_pos,
-		size_t *leaf_pos,
-		size_t *child,
-		char *status)
+		bool *exact,
+		fb_val *result,
+		fb_pos *block_pos,
+		fb_pos *node_pos)
 {
+	if (tree->content == 0)
+	{
+		printf("damn!\n");
+		result->type = CFB_VALUE_TYPE_NULL;
+		*exact = false;
+		*block_pos = 0;
+		*node_pos = 0;
+		return;
+	}
+
 	fb_block_h *block = tree->root;
-	*status = CFB_FOUND_NONE;
-	fb_leaf leaf;
 
 	long page_size = sysconf(_SC_PAGESIZE);
 	*block_pos = 0;
-	_fb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, child, status);
+
+	_fb_search_block(tree, block, key, exact, result, node_pos);
 	
-	while (leaf.type == CFB_LEAF_TYPE_BLOCK)
+	while (result->type == CFB_VALUE_TYPE_BLOCK)
 	{
-		*block_pos = leaf.pos;
+		*block_pos = result->block_pos;
 		size_t offset = (*block_pos / page_size) * page_size;
 		char *mptr = mmap(NULL,
 				tree->block_size,
@@ -298,34 +262,32 @@ void _fb_get(
 		assert(mptr != MAP_FAILED);
 		
 		block = (fb_block_h *)(mptr + *block_pos - offset);
-		_fb_search_block(tree, block, key, node_pos, &leaf, leaf_pos, child, status);
+		
+		_fb_search_block(tree, block, key, exact, result, node_pos);
 
 		munmap(mptr, tree->block_size);
 	}
 
-	*found = false;
-	*tuple_pos = leaf.pos;
-	if (leaf.type == CFB_LEAF_TYPE_VAL && *status == CFB_FOUND_EXACT)
+	if (result->type != CFB_VALUE_TYPE_CNTNT)
 	{
-		*found = true;
+		*exact = false;
 	}
 }
 
 void fb_get(
 		fb_tree *tree,
 		fb_key key,
-		bool *found,
-		size_t *tuple_pos)
+		bool *exact,
+		uint32_t *result)
 {
-	size_t block_pos;
-	size_t node_pos;
-	size_t leaf_pos;
-	size_t child;
-	char status;
-	_fb_get(tree, key, found, tuple_pos, &block_pos, &node_pos, &leaf_pos, &child, &status);
+	fb_pos block_pos;
+	fb_pos node_pos;
+	fb_val res;
+	_fb_get(tree, key, exact, &res, &block_pos, &node_pos);
+	*result = res.value;
 }
 
-static inline void _fb_insert_node(
+/*static inline void _fb_insert_node(
 		fb_tree *tree,
 		fb_block_h *block,
 		size_t node_pos,
@@ -381,7 +343,7 @@ static inline void _fb_insert_leaf(
 		next = buff;
 	}
 }
-
+1
 static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t node_pos)
 {
 	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
@@ -392,6 +354,7 @@ static inline void _fb_split_block(
 		fb_tree *tree)
 {
 	// TODO
+	// make blocks leaves when necessary
 }
 
 static inline void _fb_split_node(
@@ -409,8 +372,9 @@ static inline void _fb_split_node(
 	size_t parent_pos = (node_pos - 1) / tree->block_bfactor;
 	fb_node_h *node = ((fb_node_h *)block->body) + node_pos;
 	fb_node_h *next = node_pos + 1;
+	next->slot.type = CFB_SLOT_TYPE_NODE;
 	next->keyc = 0;
-	for (size_t i = node->keyc / 2; i < node->keyc; ++i)
+	for (size_t i = node->keyc / 2 + 1; i < node->keyc; ++i)
 	{
 		next->keyv[next->keyc] = node->keyv[i];
 		++next->keyc;
@@ -426,22 +390,30 @@ static inline void _fb_split_node(
 	{
 		_fb_split_node(tree, block, parent_pos);
 	}
-}
+}*/
 
 void fb_insert(
 		fb_tree *tree,
 		fb_key key,
-		size_t value)
+		uint32_t value)
 {
 	bool found;
 	size_t old_tuple_pos;
 	size_t old_block_pos;
 	size_t old_node_pos;
 	size_t old_leaf_pos;
-	size_t child;
-	char status;
+	
+	fb_val val;
+	val.type = CFB_VALUE_TYPE_CNTNT;
+	val.value = value;
 
-	long page_size = sysconf(_SC_PAGESIZE);
+	if (tree->content == 0)
+	{
+		_fb_init_node(tree, tree->root, 0, key, val);
+		return;
+	}
+
+	/*long page_size = sysconf(_SC_PAGESIZE);
 	char *mptr = NULL;
 	
 	_fb_get(tree, key, &found, &old_tuple_pos, &old_block_pos, &old_node_pos, &old_leaf_pos, &child, &status);
@@ -480,7 +452,7 @@ cleanup:
 	if (block != tree->root)
 	{
 		munmap(mptr, tree->block_size);
-	}
+	}*/
 }
 
 /*void fb_remove(
