@@ -5,35 +5,43 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define CFB_FOUND_NONE (1)
-#define CFB_FOUND_RANGE (2)
-#define CFB_FOUND_EXACT (4)
+#define CFB_VALUE_TYPE_NULL (0)
+#define CFB_VALUE_TYPE_NODE (1)
+#define CFB_VALUE_TYPE_BLOCK (2)
+#define CFB_VALUE_TYPE_VALUE (4)
 
-#define CFB_LEAF_TYPE_NULL (0)
-#define CFB_LEAF_TYPE_BLOCK (2)
-#define CFB_LEAF_TYPE_VAL (4)
-
-#define CFB_SLOT_TYPE_NULL (0)
-#define CFB_SLOT_TYPE_NODE (8)
-#define CFB_SLOT_TYPE_CACHE (16)
+#define CFB_SLOT_TYPE_CACHE (8)
+#define CFB_SLOT_TYPE_NODE (16)
 
 #define CFB_BLOCK_TYPE_NULL (0)
 #define CFB_BLOCK_TYPE_ROOT (32)
 #define CFB_BLOCK_TYPE_INNER (64)
 #define CFB_BLOCK_TYPE_LEAF (128)
 
+typedef struct _fb_val fb_val;
 typedef struct _fb_tuple fb_tuple;
-typedef struct _fb_leaf fb_leaf;
 typedef struct _fb_slot_h fb_slot_h;
-typedef struct _fb_node_h fb_node_h;
+typedef struct _fb_inner_h fb_inner_h;
+typedef struct _fb_leaf_h fb_leaf_h;
 typedef struct _fb_cache_h fb_cache_h;
 typedef struct _fb_block_h fb_block_h;
 typedef struct _fb_tree fb_tree;
 
 /**
- * An index value
+ * An index / leaf value
  */
 typedef uint32_t fb_key;
+typedef uint32_t fb_pos;
+
+struct _fb_val {
+	uint8_t type;
+	union {
+		fb_pos node_pos;
+		fb_pos block_pos;
+		uint32_t value;
+	};
+}__attribute__((packed));
+
 
 /**
  * A data tuple
@@ -49,63 +57,27 @@ struct _fb_tuple
 __attribute__((packed));
 
 /**
- * A leaf value
+ * A slot
  */
-
-struct _fb_leaf
-{
-	// whether we point to another block or a tuple
-	char type;
-	size_t pos;
-}
-__attribute__((packed));
-
-
 struct _fb_slot_h
 {
-	char type;
-}
-__attribute__((packed));
-
-/**
- * A node slot
- */
-
-struct _fb_node_h
-{
-	fb_slot_h slot;
-	uint8_t keyc;
-	fb_key keyv[0];
-	// list of key values follows
-}
-__attribute__((packed));
-
-/**
- * A cache slot
- */
-
-struct _fb_cache_h
-{
-	fb_slot_h slot;
-	uint8_t tuplec;
-	fb_tuple tuplev[0];
-	// list of cached tuples follows
-}
-__attribute__((packed));
+	uint8_t type;
+	uint8_t cont;
+	fb_pos parent;
+	uint8_t body[0];
+} __attribute__((packed));
 
 /**
  * A block of slots
  */
-
 struct _fb_block_h
 {
-	char type;
-	size_t parent;
+	uint8_t type;
+	fb_pos parent;
 
 	char body[0];
 
 	// list of slots follows
-	// list of leaves follows
 }
 __attribute__((packed));
 
@@ -118,42 +90,34 @@ struct _fb_tree
 	// the descriptor of the index file
 	int index_fd;
 
-	// the size of one big node, including a B+tree
+	// the size of one big node
 	size_t block_size;
 
 	// the size of a small node
 	size_t slot_size;
 
-	// number of blocks in memory, including deleted ones
-	size_t blocks_alloc;
-	
-	// number of blocks currently used
-	size_t blocks_used;
-
 	// max number of slots in a block,
 	// including slots used only as cache
 	size_t block_slots;
 
-	// number of nodes in a block
+	// number of usable nodes
+	// does not include cache slots
 	size_t block_nodes;
-
-	// number of leaves in a block
-	size_t block_leaves;
-
-	// max number of keys in a node
-	size_t node_keys;
 
 	// max number of tuples in a cache
 	size_t cache_tuples;
 
-	// number of children for each node in a block
-	size_t block_bfactor;
+	// max number of children for each node
+	size_t bfactor;
+
+	// max number of keys for each node
+	size_t kfactor;
 
 	// number of tree levels in each block
 	size_t block_height;
 
-	// offset from beginning of nodes to beginning of leaves
-	size_t block_leaves_off;
+	// number of items contained in the tree
+	size_t content;
 
 	// the root block
 	fb_block_h *root;
@@ -166,12 +130,14 @@ __attribute__((packed));
  * @param[in] file The file where to store the tree
  * @param[in] block_size The size of a block
  * @param[in] slot_size The size of a slot
+ * @param[in] bfactor The branching factor of the tree
  */
 void fb_init_tree(
 		fb_tree *tree,
 		const char *file,
 		size_t block_size,
-		size_t slot_size);
+		size_t slot_size,
+		size_t bfactor);
 
 /**
  * Destroy a tree, releasing all its resources
@@ -187,11 +153,11 @@ void fb_destr_tree(
  * @param[out] found Whether the key is in the tree
  * @param[out] value The position of the tuple for key 'key'
  */
-void fb_get(
+/*void fb_get(
 		fb_tree *tree,
 		fb_key key,
 		bool *found,
-		size_t *value);
+		size_t *value);*/
 
 /*void fb_insert(
 		fb_tree *tree,

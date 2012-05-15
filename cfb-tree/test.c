@@ -5,7 +5,7 @@
 
 #include "fb_tree.c"
 
-void test_fb_search_node(fb_tree *tree, fb_block_h *block, int key)
+/*void test_fb_search_node(fb_tree *tree, fb_block_h *block, int key)
 {
 	size_t node_pos = 0;
 	char status;
@@ -41,26 +41,27 @@ void test_fb_insert(fb_tree *tree, int key, size_t val)
 {
 	fb_insert(tree, key, val);
 	printf("fb_insert: key %i | val: %zu\n", key, val);
-}
+}*/
 
 int main(int argc, char *argv[])
 {
-	if (argc != 4)
+	if (argc != 5)
 	{
-		fprintf(stderr, "\tUsage: %s index_file block_size slot_size\n", argv[0]);
+		fprintf(stderr, "\tUsage: %s index_file block_size slot_size bfactor\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
-	long block, slot;
-	//block = strtol(argv[2], NULL, 10);
-	//slot = strtol(argv[3], NULL, 10);
-	slot = 2 + 3*4;
-	block = 9 + slot * 5 + 16 * 9;
+	long block, slot, bfactor;
+	block = strtol(argv[2], NULL, 10);
+	slot = strtol(argv[3], NULL, 10);
+	bfactor = strtol(argv[4], NULL, 10);
+	//slot = sizeof(fb_slot_h) + 3 * sizeof(fb_key);
+	//block = sizeof(fb_block_h) + slot * 5;
 
 	fb_tree tree;
-	fb_init_tree(&tree, argv[1], block, slot);
-	fb_block_h *block_h = tree.root;
+	fb_init_tree(&tree, argv[1], block, slot, bfactor);
+	//fb_block_h *block_h = tree.root;
 
-	char m[] = {
+	/*char m[] = {
 		CFB_SLOT_TYPE_NODE, 2,
 		3, 0, 0, 0,
 		6, 0, 0, 0,
@@ -139,7 +140,7 @@ int main(int argc, char *argv[])
 	test_fb_insert(&tree, 4, 0xCB);
 	test_fb_get(&tree, 4);
 	test_fb_insert(&tree, 8, 0xCC);
-	test_fb_get(&tree, 8);
+	test_fb_get(&tree, 8);*/
 
 	fb_destr_tree(&tree);
 	return EXIT_SUCCESS;
