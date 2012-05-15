@@ -118,10 +118,22 @@ void get_node(node_t *n, pointer_t offset) {
   assert(size == sizeof(node_t));
 }
 
+uint32_t bin_search(key_t k, node_t *n, int low, int high) {
+  if (low > high) return -1;
+  int mid = (low + high) / 2;
+  if (k == n->keys[mid]) return mid;
+  if (k < n->keys[mid]) return bin_search(k, n, low, mid-1);
+  return bin_search(k, n, mid+1, high);
+}
+
 // Find slot that fits key (linear)
 uint32_t find_slot(key_t key, node_t *n, int exact) {
   uint32_t i = 0;
   key_t prev;
+
+  if (exact) {
+    return bin_search(key, n, 0, n->num_keys - 1);
+  }
 
   for (i = 0; i <= n->num_keys; i++) {
     // Last slot
@@ -139,15 +151,8 @@ uint32_t find_slot(key_t key, node_t *n, int exact) {
     prev = n->keys[i];
 
     // Get first slot whose key is >= mine
-    if (exact) {
-      if (key == n->keys[i]) {
-	break;
-      }
-    }
-    else {
-      if (key < n->keys[i]) {
-	break;
-      }
+    if (key < n->keys[i]) {
+      break;
     }
   }
 
