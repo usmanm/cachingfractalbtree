@@ -29,9 +29,50 @@ static inline fb_node_data _fb_node_content(
 	return data;
 }
 
-void fb_print_block(fb_tree *tree, fb_block_h *block)
+
+static inline fb_block_data _fb_load_block(
+		fb_tree *tree,
+		fb_pos block_pos,
+		bool write)
 {
-	printf("\n\n --- block ---\n");
+	fb_block_data block_data;
+	int prot = write ? PROT_READ | PROT_WRITE : PROT_READ;
+	int flags = write ? MAP_SHARED : MAP_PRIVATE;
+	long page_size = sysconf(_SC_PAGESIZE);
+	size_t file_offset = ((block_pos * tree->block_size) / page_size) * page_size;
+	size_t ptr_offset = block_pos * tree->block_size - file_offset;
+
+	block_data.mptr = mmap(
+			NULL,
+			tree->block_size + ptr_offset,
+			prot,
+			flags, 
+			tree->index_fd,
+			file_offset);
+	if (block_data.mptr == MAP_FAILED)
+	{
+		fprintf(stderr, "ERROR: cannot mmap block\n");
+		exit(EXIT_FAILURE);
+	}
+	block_data.block = (fb_block_h *)(block_data.mptr + ptr_offset);
+	block_data.off = ptr_offset;
+	block_data.pos = block_pos;
+	return block_data;
+}
+
+static inline void _fb_unload_block(fb_tree *tree, fb_block_data data)
+{
+	if (munmap(data.mptr, tree->block_size + data.off))
+	{
+		fprintf(stderr, "ERROR: cannot munmap block\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+
+void fb_print_block(fb_tree *tree, fb_block_h *block, fb_pos block_pos)
+{
+	printf("\n -- block %2i --\n", block_pos);
 	printf("type %i | cont %i | parent %i | root %i | height %i\n",
 			block->type, block->cont, block->parent, block->root, block->height);
 	for (size_t i = 0; i < tree->block_slots; ++i)
@@ -54,7 +95,17 @@ void fb_print_block(fb_tree *tree, fb_block_h *block)
 			}
 		}
 	}
-	printf(" -------------\n\n");
+	printf(" --------------\n\n");
+}
+
+void fb_print_tree(fb_tree *tree)
+{
+	for (size_t block_pos = 0; block_pos < tree->blocks_alloc; ++block_pos)
+	{
+		fb_block_data data =_fb_load_block(tree, block_pos, false);
+		fb_print_block(tree, data.block, block_pos);
+		_fb_unload_block(tree, data);
+	}
 }
 
 static void _fb_init_node(
@@ -78,7 +129,8 @@ static void _fb_init_node(
 static void _fb_init_block(
 		fb_tree *tree,
 		fb_block_h* block,
-		uint8_t type, fb_pos parent)
+		uint8_t type,
+		fb_pos parent)
 {
 	block->type = type;
 	block->parent = parent;
@@ -151,11 +203,17 @@ void fb_init_tree(
 	tree->index_fd = open(file, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	assert(tree->index_fd != -1);
 
-	ftruncate(tree->index_fd, block_size);
-	tree->root = mmap(NULL, block_size, PROT_READ | PROT_WRITE, MAP_SHARED, tree->index_fd, 0);
-	tree->root_mptr = (char *)tree->root;
-
-	_fb_init_block(tree, tree->root, CFB_BLOCK_TYPE_ROOT | CFB_BLOCK_TYPE_LEAF, 0);
+	tree->root = 0;
+	tree->blocks_alloc = 1;
+	if (ftruncate(tree->index_fd, block_size))
+	{
+		fprintf(stderr, "ERROR: cannot increase file size\n");
+		exit(EXIT_FAILURE);
+	}
+	fb_block_data block = _fb_load_block(tree, 0, true);
+	_fb_init_block(tree, block.block, CFB_BLOCK_TYPE_ROOT | CFB_BLOCK_TYPE_LEAF, 0);
+	_fb_unload_block(tree, block);
+	
 	float usage_density = tree->block_nodes / (float)tree->block_slots;
 	printf("index_fd %i\n"
 			"block_size %zu\n"
@@ -175,12 +233,10 @@ void fb_init_tree(
 			tree->bfactor,
 			tree->block_height,
 			usage_density);
-	
 }
 
 void fb_destr_tree(fb_tree *tree)
 {
-	munmap(tree->root_mptr, tree->block_size);
 	close(tree->index_fd);
 }
 
@@ -292,45 +348,32 @@ void _fb_get(
 		fb_pos *block_pos,
 		fb_pos *node_pos)
 {
+	*block_pos = tree->root;
+
 	if (tree->content == 0)
 	{
 		result->type = CFB_VALUE_TYPE_NULL;
 		*exact = false;
-		*block_pos = 0;
 		*node_pos = 0;
 		return;
 	}
 
-	fb_block_h *block = tree->root;
-
-	long page_size = sysconf(_SC_PAGESIZE);
-	*block_pos = 0;
-
-	_fb_search_block(tree, block, key, exact, result, node_pos);
+	fb_block_data block = _fb_load_block(tree, *block_pos, false);
+	_fb_search_block(tree, block.block, key, exact, result, node_pos);
 	
 	while (result->type == CFB_VALUE_TYPE_BLOCK)
 	{
+		_fb_unload_block(tree, block);
 		*block_pos = result->block_pos;
-		size_t offset = (*block_pos / page_size) * page_size;
-		char *mptr = mmap(NULL,
-				tree->block_size,
-				PROT_READ,
-				MAP_PRIVATE,
-				tree->index_fd,
-				offset);
-		assert(mptr != MAP_FAILED);
-		
-		block = (fb_block_h *)(mptr + *block_pos - offset);
-		
-		_fb_search_block(tree, block, key, exact, result, node_pos);
-
-		munmap(mptr, tree->block_size);
+		block = _fb_load_block(tree, *block_pos, false);
+		_fb_search_block(tree, block.block, key, exact, result, node_pos);
 	}
 
 	if (result->type != CFB_VALUE_TYPE_CNTNT)
 	{
 		*exact = false;
 	}
+	_fb_unload_block(tree, block);
 }
 
 void fb_get(
@@ -346,121 +389,109 @@ void fb_get(
 	*result = res.value;
 }
 
-/*static inline void _fb_insert_node(
-		fb_tree *tree,
-		fb_block_h *block,
-		size_t node_pos,
-		fb_key key)
-{
-	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
-	if (node->keyc >= tree->node_keys)
-	{
-		// there is no room for an insert
-		// should never reach this
-		assert(false);
-	}
-
-	// place the new key in order
-	fb_key last = key;
-	fb_key tmp;
-	size_t pos = SIZE_MAX;
-	for (size_t i = 0; i < node->keyc; ++i)
-	{
-		if (node->keyv[i] > key)
-		{
-			pos = pos < i ? pos : i;
-			tmp = node->keyv[i];
-			node->keyv[i] = last;
-			last = tmp;
-		}
-	}
-	node->keyv[node->keyc] = last;
-
-	++node->keyc;
-}
-
-static inline void _fb_insert_leaf(
-		fb_tree *tree,
-		fb_leaf *target,
-		size_t child,
-		size_t value)
-{
-	fb_leaf buff;
-	fb_leaf next;
-	next.type = CFB_LEAF_TYPE_VAL;
-	next.pos = value;
-
-	// interval after the one we would have looked at
-	// when inserting b:
-	// [a;c) -> [a;b)[b;c)
-	++target;
-	
-	for (size_t i = 0; i < tree->block_bfactor - (child + 1); ++i)
-	{
-		buff = target[i];
-		target[i] = next;
-		next = buff;
-	}
-}
-
-static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t node_pos)
-{
-	fb_node_h *node = (fb_node_h *)(block->body + node_pos * tree->slot_size);
-	return node->keyc >= tree->node_keys ? true : false;
-}
-
-static inline void _fb_split_block(
-		fb_tree *tree)
-{
-	// TODO
-	// make blocks leaves when necessary
-}
-
-static inline void _fb_split_node(
-		fb_tree *tree,
-		fb_block_h *block,
-		size_t node_pos)
-{
-	if (node_pos == 0)
-	{
-		// TODO we need to branch the block
-		assert(false);
-		return;
-	}
-
-	size_t parent_pos = (node_pos - 1) / tree->block_bfactor;
-	fb_node_h *node = ((fb_node_h *)block->body) + node_pos;
-	fb_node_h *next = node_pos + 1;
-	next->slot.type = CFB_SLOT_TYPE_NODE;
-	next->keyc = 0;
-	for (size_t i = node->keyc / 2 + 1; i < node->keyc; ++i)
-	{
-		next->keyv[next->keyc] = node->keyv[i];
-		++next->keyc;
-	}
-	node->keyc -= next->keyc;
-
-	// TODO this is not enough, we must take care of the leaves here
-
-	// insert the min of the new node into the parent
-	// if the parent becomes full, recursively split it
-	_fb_insert_node(tree, block, parent_pos, next->keyv[0]);
-	if (_fb_node_needs_split(tree, block, parent_pos))
-	{
-		_fb_split_node(tree, block, parent_pos);
-	}
-}*/
 
 void _fb_insert_node(
 		fb_tree *tree,
 		fb_block_h *block,
+		fb_pos block_pos,
 		fb_pos node_pos,
 		fb_key key,
 		fb_val val);
 
+/**
+ * Take a node from new and recursively move all its children from old to new
+ */
+void _fb_move_subtree(
+		fb_tree *tree,
+		fb_block_h *old,
+		fb_block_h *new,
+		fb_pos node_pos)
+{
+	fb_node_data node = _fb_node_content(tree, new, node_pos);
+	for (size_t i = 0; i < node.slot->cont + 1u; ++i)
+	{
+		fb_val curr_val = node.vals[i];
+		if (curr_val.type == CFB_VALUE_TYPE_NODE)
+		{
+			_fb_init_node(tree, new, curr_val.node_pos);
+			fb_node_data from = _fb_node_content(tree, old, curr_val.node_pos);
+			fb_node_data to = _fb_node_content(tree, new, curr_val.node_pos);
+			to.slot->type = from.slot->type;
+			to.slot->cont = from.slot->cont;
+			to.slot->parent = node_pos;
+			to.vals[0] = from.vals[0];
+			for (size_t j = 0; j < to.slot->cont; ++j)
+			{
+				to.keys[j] = from.keys[j];
+				to.vals[j+1] = from.vals[j+1];
+			}
+			from.slot->type = CFB_SLOT_TYPE_CACHE;
+			--old->cont;
+		}
+		_fb_move_subtree(tree, old, new, curr_val.node_pos);
+	}
+}
+
+void _fb_split_block(
+		fb_tree *tree,
+		fb_block_h *curr,
+		fb_pos curr_pos)
+{
+	size_t newr_pos = tree->blocks_alloc;
+	size_t next_pos = tree->blocks_alloc + 1;
+	tree->blocks_alloc += 2;
+	if (ftruncate(tree->index_fd, tree->blocks_alloc * tree->block_size))
+	{
+		fprintf(stderr, "ERROR: cannot increase file size for new blocks\n");
+		exit(EXIT_FAILURE);
+	}
+
+	fb_block_data newr =_fb_load_block(tree, newr_pos, true);
+	_fb_init_block(tree, newr.block, CFB_BLOCK_TYPE_ROOT, newr_pos);
+	
+	// leaf only if sibling is also a leaf
+	uint8_t next_type = curr->type & CFB_BLOCK_TYPE_LEAF ? CFB_BLOCK_TYPE_LEAF : 0;
+	fb_block_data next =_fb_load_block(tree, next_pos, true);
+	_fb_init_block(tree, next.block, next_type, newr_pos);
+
+	// cannot be a root anymore
+	curr->type &= ~CFB_BLOCK_TYPE_ROOT;
+	
+	_fb_init_node(tree, newr.block, newr.block->root);
+	_fb_init_node(tree, next.block, next.block->root);
+	fb_node_data root_node = _fb_node_content(tree, newr.block, newr.block->root);
+	fb_node_data old_node = _fb_node_content(tree, curr, curr->root);
+	fb_node_data new_node = _fb_node_content(tree, next.block, next.block->root);
+
+	size_t target_size = tree->bfactor / 2;
+	for (size_t i = target_size; i < old_node.slot->cont; ++i)
+	{
+		new_node.keys[i-target_size] = old_node.keys[i];
+		new_node.vals[i-target_size+1] = old_node.vals[i+1];
+		++new_node.slot->cont;
+	}
+	old_node.slot->cont -= new_node.slot->cont;
+	
+	_fb_move_subtree(tree, curr, next.block, next.block->root);
+	
+	// update new root node
+	root_node.slot->cont = 1;
+	root_node.keys[0] = new_node.keys[0];
+	root_node.vals[0].type = CFB_VALUE_TYPE_BLOCK;
+	root_node.vals[0].block_pos = curr_pos;
+	root_node.vals[1].type = CFB_VALUE_TYPE_BLOCK;
+	root_node.vals[1].block_pos = next_pos;
+
+	curr->parent = newr_pos;
+	
+	_fb_unload_block(tree, newr);
+	_fb_unload_block(tree, next);
+}
+
 void _fb_split_node(
 		fb_tree *tree,
 		fb_block_h *block,
+		fb_pos block_pos,
 		fb_pos node_pos,
 		fb_pos *next_pos)
 {
@@ -469,20 +500,20 @@ void _fb_split_node(
 	fb_node_data next = _fb_node_content(tree, block, *next_pos);
 	next.slot->parent = node.slot->parent;
 
+	// copy keys and values to new node
 	size_t target_size = tree->bfactor / 2;
 	for (size_t i = target_size; i < node.slot->cont; ++i)
 	{
-		// copy keys and values to new node
 		next.keys[i-target_size] = node.keys[i];
 		next.vals[i-target_size+1] = node.vals[i+1];
 		++next.slot->cont;
 	}
 	node.slot->cont -= next.slot->cont;
 	
+	// update the parent of moved children
 	for (size_t i = 0; i < next.slot->cont + 1u; ++i)
 	{
 		fb_val curr_val = next.vals[i];
-		// update the parent of moved children
 		if (curr_val.type == CFB_VALUE_TYPE_NODE)
 		{
 			fb_node_data child = _fb_node_content(tree, block, curr_val.node_pos);
@@ -493,7 +524,7 @@ void _fb_split_node(
 	fb_val val;
 	val.type = CFB_VALUE_TYPE_NODE;
 	val.node_pos = *next_pos;
-	_fb_insert_node(tree, block, node.slot->parent, next.keys[0], val);
+	_fb_insert_node(tree, block, block_pos, node.slot->parent, next.keys[0], val);
 }
 
 static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t node_pos)
@@ -505,6 +536,7 @@ static inline bool _fb_node_needs_split(fb_tree *tree, fb_block_h *block, size_t
 void _fb_insert_node(
 		fb_tree *tree,
 		fb_block_h *block,
+		fb_pos block_pos,
 		fb_pos node_pos,
 		fb_key key,
 		fb_val val)
@@ -538,7 +570,7 @@ void _fb_insert_node(
 	{
 		if (node_pos != block->root) // guaranteed to have one free node
 		{
-			_fb_split_node(tree, block, node_pos, &next_pos);
+			_fb_split_node(tree, block, block_pos, node_pos, &next_pos);
 		}
 		else
 		{
@@ -555,12 +587,12 @@ void _fb_insert_node(
 				++block->height;
 				
 				// split the former root
-				_fb_split_node(tree, block, node_pos, &next_pos);
+				_fb_split_node(tree, block, block_pos, node_pos, &next_pos);
 			}
 			else
 			{
-				// split block
-				assert(false);
+				printf("~~~~~~~~~~~ splitting block ~~~~~~~~~~~\n");
+				_fb_split_block(tree, block, block_pos);
 			}
 		}
 	}
@@ -596,14 +628,13 @@ void fb_insert(
 	fb_val val;
 	val.type = CFB_VALUE_TYPE_CNTNT;
 	val.value = value;
-	
-	long page_size = sysconf(_SC_PAGESIZE);
-	char *mptr = NULL;
+
+	fb_block_data block = _fb_load_block(tree, tree->root, true);
 
 	if (tree->content == 0) // insertion on empty tree
 	{
-		_fb_init_node(tree, tree->root, 0);
-		_fb_insert_node(tree, tree->root, 0, key, val);
+		_fb_init_node(tree, block.block, 0);
+		_fb_insert_node(tree, block.block, tree->root, 0, key, val);
 		return;
 	}
 
@@ -611,38 +642,17 @@ void fb_insert(
 	fb_val result;
 	_fb_get(tree, key, &exact, &result, &block_pos, &node_pos);
 	
-	fb_block_h *block = NULL;
-	if (block_pos != 0) // open the block owning the leaf
-	{
-		size_t offset = (block_pos / page_size) * page_size;
-		mptr = mmap(NULL,
-			tree->block_size,
-			PROT_READ | PROT_WRITE,
-			MAP_SHARED,
-			tree->index_fd,
-			offset);
-		assert(mptr != MAP_FAILED);
-		block = (fb_block_h *)(mptr + block_pos - offset);
-	}
-	else // the leaf is owned by the root, which is always ready
-	{
-		block = tree->root;
-	}
-
 	if (exact) // exact match, replace value
 	{
-		_fb_replace_value(tree, block, node_pos, key, val);
+		_fb_replace_value(tree, block.block, node_pos, key, val);
 		return;
 	}
 	else // true insertion
 	{
-		_fb_insert_node(tree, block, node_pos, key, val);
+		_fb_insert_node(tree, block.block, block_pos, node_pos, key, val);
 	}
 
-	if (mptr != NULL)
-	{
-		munmap(mptr, tree->block_size);
-	}
+	_fb_unload_block(tree, block);
 }
 
 /*void fb_remove(

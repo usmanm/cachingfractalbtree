@@ -13,9 +13,8 @@
 #define CFB_SLOT_TYPE_CACHE (8)
 #define CFB_SLOT_TYPE_NODE (16)
 
-#define CFB_BLOCK_TYPE_NULL (0)
+#define CFB_BLOCK_TYPE_INNER (0)
 #define CFB_BLOCK_TYPE_ROOT (32)
-#define CFB_BLOCK_TYPE_INNER (64)
 #define CFB_BLOCK_TYPE_LEAF (128)
 
 typedef struct _fb_val fb_val;
@@ -85,6 +84,15 @@ struct _fb_block_h
 __attribute__((packed));
 
 
+typedef struct _fb_block_data fb_block_data;
+struct _fb_block_data
+{
+	fb_block_h *block;
+	fb_pos pos;
+	char *mptr;
+	size_t off;
+};
+
 /**
  * The cached B+tree
  */
@@ -122,11 +130,13 @@ struct _fb_tree
 	// number of items contained in the tree
 	size_t content;
 
-	// the root block
-	fb_block_h *root;
+	// the number of allocated contiguous blocks
+	// some may be unused when removed
+	// suitable to decide where to store next block
+	size_t blocks_alloc;
 
-	// the first mmap'd page for the root
-	char *root_mptr;
+	// the root block
+	fb_pos root;
 }
 __attribute__((packed));
 

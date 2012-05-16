@@ -60,8 +60,9 @@ int main(int argc, char *argv[])
 	for (size_t i = 0; i < 50; ++i)
 	{
 		test_fb_insert(&tree, i, i+1);
-		//fb_print_block(&tree, tree.root);
+		//fb_print_tree(&tree);
 	}
+	//fb_print_tree(&tree);
 	for (size_t i = 0; i < 50; ++i)
 	{
 		test_fb_get(&tree, i);
