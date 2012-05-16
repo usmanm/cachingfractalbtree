@@ -31,7 +31,7 @@ static inline fb_node_data _fb_node_content(
 
 void fb_print_block(fb_tree *tree, fb_block_h *block)
 {
-	printf(" --- block ---\n");
+	printf("\n\n --- block ---\n");
 	printf("type %i | cont %i | parent %i | root %i | height %i\n",
 			block->type, block->cont, block->parent, block->root, block->height);
 	for (size_t i = 0; i < tree->block_slots; ++i)
@@ -43,11 +43,18 @@ void fb_print_block(fb_tree *tree, fb_block_h *block)
 		}
 		else
 		{
-			printf("> slot %zu: type %i | cont %i | parent % i\n",
+			printf("> slot %zu: type %i | cont %i | parent %i\n",
 					i, slot.slot->type, slot.slot->cont, slot.slot->parent);
+			printf(">>> entry %4i: key %4f | type %2i | val %4i\n",
+					-1, -1/0.f, slot.vals[0].type, slot.vals[0].value);
+			for (size_t j = 0; j < slot.slot->cont; ++j)
+			{
+				printf(">>> entry %4zu: key %4i | type %2i | val %4i\n",
+						j, slot.keys[j], slot.vals[j+1].type, slot.vals[j+1].value);
+			}
 		}
 	}
-	printf(" -------------\n");
+	printf(" -------------\n\n");
 }
 
 static void _fb_init_node(
@@ -227,6 +234,7 @@ static inline void _fb_search_node(
 	// larger or eq than last key
 	*exact = node.keys[node.slot->cont - 1] == key ? true : false;
 	*result = node.vals[node.slot->cont];
+	//printf("### search_node result type %i value %i\n", result->type, result->value);
 }
 
 
@@ -464,11 +472,23 @@ void _fb_split_node(
 	size_t target_size = tree->bfactor / 2;
 	for (size_t i = target_size; i < node.slot->cont; ++i)
 	{
+		// copy keys and values to new node
 		next.keys[i-target_size] = node.keys[i];
 		next.vals[i-target_size+1] = node.vals[i+1];
 		++next.slot->cont;
 	}
 	node.slot->cont -= next.slot->cont;
+	
+	for (size_t i = 0; i < next.slot->cont + 1u; ++i)
+	{
+		fb_val curr_val = next.vals[i];
+		// update the parent of moved children
+		if (curr_val.type == CFB_VALUE_TYPE_NODE)
+		{
+			fb_node_data child = _fb_node_content(tree, block, curr_val.node_pos);
+			child.slot->parent = *next_pos;
+		}
+	}
 
 	fb_val val;
 	val.type = CFB_VALUE_TYPE_NODE;

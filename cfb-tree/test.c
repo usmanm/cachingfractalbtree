@@ -57,23 +57,20 @@ int main(int argc, char *argv[])
 	fb_tree tree;
 	fb_init_tree(&tree, argv[1], block, slot, bfactor);
 	
-	test_fb_insert(&tree, 0x3A, 0x3B);
-	test_fb_insert(&tree, 0x2A, 0x2B);
-	test_fb_insert(&tree, 0x1A, 0x1B);
-	test_fb_insert(&tree, 0x8A, 0x8B);
-	test_fb_insert(&tree, 0x5A, 0x5B);
-	fb_print_block(&tree, tree.root);
+	for (size_t i = 0; i < 50; ++i)
+	{
+		test_fb_insert(&tree, i, i+1);
+		//fb_print_block(&tree, tree.root);
+	}
+	for (size_t i = 0; i < 50; ++i)
+	{
+		test_fb_get(&tree, i);
+	}
 	//test_fb_insert(&tree, 0x44, 0x44);
 	//test_fb_insert(&tree, 0x77, 0x77);
 	//test_fb_insert(&tree, 0x66, 0x66);
 	//test_fb_search_node(&tree, tree.root, 0xAA, 0);
 	//test_fb_search_block(&tree, tree.root, 0xAA);
-	test_fb_get(&tree, 0x1A);
-	test_fb_get(&tree, 0x8A);
-	//test_fb_get(&tree, 0x22);
-	//test_fb_get(&tree, 0x33);
-	//test_fb_get(&tree, 0x44);
-	//test_fb_get(&tree, 0x55);
 
 	/*char m[] = {
 		CFB_SLOT_TYPE_NODE, 2,
