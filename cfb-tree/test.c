@@ -57,13 +57,14 @@ int main(int argc, char *argv[])
 	fb_tree tree;
 	fb_init_tree(&tree, argv[1], block, slot, bfactor);
 	
-	for (size_t i = 0; i < 50; ++i)
+	size_t items = 150;
+	for (size_t i = 0; i < items; ++i)
 	{
 		test_fb_insert(&tree, i, i+1);
 		//fb_print_tree(&tree);
 	}
 	//fb_print_tree(&tree);
-	for (size_t i = 0; i < 50; ++i)
+	for (size_t i = 0; i < items; ++i)
 	{
 		test_fb_get(&tree, i);
 	}

@@ -405,8 +405,11 @@ void _fb_move_subtree(
 		fb_tree *tree,
 		fb_block_h *old,
 		fb_block_h *new,
-		fb_pos node_pos)
+		fb_pos node_pos,
+		fb_pos height)
 {
+	new->height = height;
+
 	fb_node_data node = _fb_node_content(tree, new, node_pos);
 	for (size_t i = 0; i < node.slot->cont + 1u; ++i)
 	{
@@ -427,8 +430,9 @@ void _fb_move_subtree(
 			}
 			from.slot->type = CFB_SLOT_TYPE_CACHE;
 			--old->cont;
+
+			_fb_move_subtree(tree, old, new, curr_val.node_pos, height+1);
 		}
-		_fb_move_subtree(tree, old, new, curr_val.node_pos);
 	}
 }
 
@@ -437,29 +441,46 @@ void _fb_split_block(
 		fb_block_h *curr,
 		fb_pos curr_pos)
 {
-	size_t newr_pos = tree->blocks_alloc;
-	size_t next_pos = tree->blocks_alloc + 1;
-	tree->blocks_alloc += 2;
+	size_t newr_pos;
+	size_t next_pos;
+	size_t increase;
+	bool fresh_parent = curr->type & CFB_BLOCK_TYPE_ROOT;
+	if (fresh_parent)
+	{
+		newr_pos = tree->blocks_alloc;
+		next_pos = tree->blocks_alloc + 1u;
+		increase = 2;
+		tree->root = newr_pos;
+	}
+	else
+	{
+		newr_pos = curr->parent;
+		next_pos = tree->blocks_alloc;
+		increase = 1;
+	}
+	
+	// cannot be a root anymore
+	curr->type &= ~CFB_BLOCK_TYPE_ROOT;
+	curr->parent = newr_pos;
+
+	tree->blocks_alloc += increase;
 	if (ftruncate(tree->index_fd, tree->blocks_alloc * tree->block_size))
 	{
 		fprintf(stderr, "ERROR: cannot increase file size for new blocks\n");
 		exit(EXIT_FAILURE);
 	}
 
-	fb_block_data newr =_fb_load_block(tree, newr_pos, true);
-	_fb_init_block(tree, newr.block, CFB_BLOCK_TYPE_ROOT, newr_pos);
-	
-	// leaf only if sibling is also a leaf
 	uint8_t next_type = curr->type & CFB_BLOCK_TYPE_LEAF ? CFB_BLOCK_TYPE_LEAF : 0;
+	fb_block_data newr =_fb_load_block(tree, newr_pos, true);
+	if (fresh_parent)
+	{
+		_fb_init_block(tree, newr.block, CFB_BLOCK_TYPE_ROOT, newr_pos);
+		_fb_init_node(tree, newr.block, newr.block->root);
+	}
 	fb_block_data next =_fb_load_block(tree, next_pos, true);
 	_fb_init_block(tree, next.block, next_type, newr_pos);
-
-	// cannot be a root anymore
-	curr->type &= ~CFB_BLOCK_TYPE_ROOT;
-	
-	_fb_init_node(tree, newr.block, newr.block->root);
 	_fb_init_node(tree, next.block, next.block->root);
-	fb_node_data root_node = _fb_node_content(tree, newr.block, newr.block->root);
+	
 	fb_node_data old_node = _fb_node_content(tree, curr, curr->root);
 	fb_node_data new_node = _fb_node_content(tree, next.block, next.block->root);
 
@@ -472,17 +493,31 @@ void _fb_split_block(
 	}
 	old_node.slot->cont -= new_node.slot->cont;
 	
-	_fb_move_subtree(tree, curr, next.block, next.block->root);
+	_fb_move_subtree(tree, curr, next.block, next.block->root, 0);
 	
-	// update new root node
-	root_node.slot->cont = 1;
-	root_node.keys[0] = new_node.keys[0];
-	root_node.vals[0].type = CFB_VALUE_TYPE_BLOCK;
-	root_node.vals[0].block_pos = curr_pos;
-	root_node.vals[1].type = CFB_VALUE_TYPE_BLOCK;
-	root_node.vals[1].block_pos = next_pos;
-
-	curr->parent = newr_pos;
+	// update root node
+	if (fresh_parent)
+	{
+		fb_node_data root_node = _fb_node_content(tree, newr.block, newr.block->root);
+		root_node.slot->cont = 1;
+		root_node.keys[0] = new_node.keys[0];
+		root_node.vals[0].type = CFB_VALUE_TYPE_BLOCK;
+		root_node.vals[0].block_pos = curr_pos;
+		root_node.vals[1].type = CFB_VALUE_TYPE_BLOCK;
+		root_node.vals[1].block_pos = next_pos;
+	}
+	else
+	{
+		fb_key insert_key = new_node.keys[0];
+		fb_val insert_val;
+		insert_val.type = CFB_VALUE_TYPE_BLOCK;
+		insert_val.block_pos = next_pos;
+		bool exact;
+		fb_val result;
+		fb_pos node_pos;
+		_fb_search_block(tree, newr.block, insert_key, &exact, &result, &node_pos);
+		_fb_insert_node(tree, newr.block, newr_pos, node_pos, insert_key, insert_val);
+	}
 	
 	_fb_unload_block(tree, newr);
 	_fb_unload_block(tree, next);
@@ -629,19 +664,22 @@ void fb_insert(
 	val.type = CFB_VALUE_TYPE_CNTNT;
 	val.value = value;
 
-	fb_block_data block = _fb_load_block(tree, tree->root, true);
-
+	fb_block_data block;
 	if (tree->content == 0) // insertion on empty tree
 	{
+		block = _fb_load_block(tree, tree->root, true);
 		_fb_init_node(tree, block.block, 0);
 		_fb_insert_node(tree, block.block, tree->root, 0, key, val);
+		_fb_unload_block(tree, block);
 		return;
 	}
 
 	// find the leaf where the result should be
 	fb_val result;
 	_fb_get(tree, key, &exact, &result, &block_pos, &node_pos);
+	printf("fb_insert into block %i and node %i\n", block_pos, node_pos);
 	
+	block = _fb_load_block(tree, block_pos, true);
 	if (exact) // exact match, replace value
 	{
 		_fb_replace_value(tree, block.block, node_pos, key, val);
@@ -651,7 +689,6 @@ void fb_insert(
 	{
 		_fb_insert_node(tree, block.block, block_pos, node_pos, key, val);
 	}
-
 	_fb_unload_block(tree, block);
 }
 
