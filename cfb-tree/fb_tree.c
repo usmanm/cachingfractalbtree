@@ -100,6 +100,33 @@ void fb_print_block(fb_tree *tree, fb_block_h *block, fb_pos block_pos)
 
 void fb_print_tree(fb_tree *tree)
 {
+	float usage_density = tree->block_nodes / (float)tree->block_slots;
+	printf("\n\n $$$$$ tree $$$$$\n\n"
+			"index_fd %i\n"
+			"block_size %zu\n"
+			"slot_size %zu\n"
+			"block_slots %zu\n"
+			"block_nodes %zu\n"
+			"cache_tuples %zu\n"
+			"block_bfactor %zu\n"
+			"block_height %zu\n"
+			"%% density %f\n"
+			"# items %zu\n"
+			"# blocks %zu\n"
+			"root_pos %i\n",
+			tree->index_fd,
+			tree->block_size,
+			tree->slot_size,
+			tree->block_slots,
+			tree->block_nodes,
+			tree->cache_tuples,
+			tree->bfactor,
+			tree->block_height,
+			usage_density,
+			tree->content,
+			tree->blocks_alloc,
+			tree->root);
+	
 	for (size_t block_pos = 0; block_pos < tree->blocks_alloc; ++block_pos)
 	{
 		fb_block_data data =_fb_load_block(tree, block_pos, false);
@@ -213,26 +240,8 @@ void fb_init_tree(
 	fb_block_data block = _fb_load_block(tree, 0, true);
 	_fb_init_block(tree, block.block, CFB_BLOCK_TYPE_ROOT | CFB_BLOCK_TYPE_LEAF, 0);
 	_fb_unload_block(tree, block);
-	
-	float usage_density = tree->block_nodes / (float)tree->block_slots;
-	printf("index_fd %i\n"
-			"block_size %zu\n"
-			"slot_size %zu\n"
-			"block_slots %zu\n"
-			"block_nodes %zu\n"
-			"cache_tuples %zu\n"
-			"block_bfactor %zu\n"
-			"block_height %zu\n"
-			"%% density %f\n",
-			tree->index_fd,
-			tree->block_size,
-			tree->slot_size,
-			tree->block_slots,
-			tree->block_nodes,
-			tree->cache_tuples,
-			tree->bfactor,
-			tree->block_height,
-			usage_density);
+
+	fb_print_tree(tree);
 }
 
 void fb_destr_tree(fb_tree *tree)
@@ -405,6 +414,7 @@ void _fb_move_subtree(
 		fb_tree *tree,
 		fb_block_h *old,
 		fb_block_h *new,
+		fb_pos new_block,
 		fb_pos node_pos,
 		fb_pos height)
 {
@@ -430,8 +440,20 @@ void _fb_move_subtree(
 			}
 			from.slot->type = CFB_SLOT_TYPE_CACHE;
 			--old->cont;
+		
+			// update the parent of moved children blocks
+			for (size_t j = 0; j < to.slot->cont + 1u; ++j)
+			{
+				fb_val curr_val = to.vals[j];
+				if (curr_val.type == CFB_VALUE_TYPE_BLOCK)
+				{
+					fb_block_data block = _fb_load_block(tree, curr_val.block_pos, true);
+					block.block->parent = new_block;
+					_fb_unload_block(tree, block);
+				}
+			}
 
-			_fb_move_subtree(tree, old, new, curr_val.node_pos, height+1);
+			_fb_move_subtree(tree, old, new, new_block, curr_val.node_pos, height+1);
 		}
 	}
 }
@@ -470,7 +492,7 @@ void _fb_split_block(
 		exit(EXIT_FAILURE);
 	}
 
-	uint8_t next_type = curr->type & CFB_BLOCK_TYPE_LEAF ? CFB_BLOCK_TYPE_LEAF : 0;
+	uint8_t next_type = curr->type & CFB_BLOCK_TYPE_LEAF;
 	fb_block_data newr =_fb_load_block(tree, newr_pos, true);
 	if (fresh_parent)
 	{
@@ -493,7 +515,7 @@ void _fb_split_block(
 	}
 	old_node.slot->cont -= new_node.slot->cont;
 	
-	_fb_move_subtree(tree, curr, next.block, next.block->root, 0);
+	_fb_move_subtree(tree, curr, next.block, next.pos, next.block->root, 0);
 	
 	// update root node
 	if (fresh_parent)
@@ -626,7 +648,7 @@ void _fb_insert_node(
 			}
 			else
 			{
-				printf("~~~~~~~~~~~ splitting block ~~~~~~~~~~~\n");
+				//printf("~~~~~~~~~~~ splitting block ~~~~~~~~~~~\n");
 				_fb_split_block(tree, block, block_pos);
 			}
 		}
@@ -677,7 +699,7 @@ void fb_insert(
 	// find the leaf where the result should be
 	fb_val result;
 	_fb_get(tree, key, &exact, &result, &block_pos, &node_pos);
-	printf("fb_insert into block %i and node %i\n", block_pos, node_pos);
+	//printf("fb_insert into block %i and node %i\n", block_pos, node_pos);
 	
 	block = _fb_load_block(tree, block_pos, true);
 	if (exact) // exact match, replace value

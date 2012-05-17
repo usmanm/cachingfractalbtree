@@ -30,14 +30,14 @@ void test_fb_get(fb_tree *tree, int key)
 	fb_val result;
 	fb_pos block_pos, node_pos = 0;
 	_fb_get(tree, key, &exact, &result, &block_pos, &node_pos);
-	printf("fb_get: seek %i | exact %i | found_type %i | found_val %i | block %u | node %u\n",
-			key, (int)exact, result.type, result.value, block_pos, node_pos);
+	//printf("fb_get: seek %i | exact %i | found_type %i | found_val %i | block %u | node %u\n",
+	//		key, (int)exact, result.type, result.value, block_pos, node_pos);
 }
 
 void test_fb_insert(fb_tree *tree, fb_key key, uint32_t val)
 {
 	fb_insert(tree, key, val);
-	printf("fb_insert: key %i | val: %u\n", key, val);
+	//printf("fb_insert: key %i | val: %u\n", key, val);
 }
 
 int main(int argc, char *argv[])
@@ -57,14 +57,25 @@ int main(int argc, char *argv[])
 	fb_tree tree;
 	fb_init_tree(&tree, argv[1], block, slot, bfactor);
 	
-	size_t items = 150;
-	for (size_t i = 0; i < items; ++i)
+	int items = 20000;
+	for (int i = items-1; i >= 0; --i)
 	{
-		test_fb_insert(&tree, i, i+1);
+		if (i % 3 != 0)
+		{
+			test_fb_insert(&tree, i, i+1);
+		}
 		//fb_print_tree(&tree);
 	}
+	for (int i = 0; i < items; ++i)
+	{
+		if (i % 3 == 0)
+		{
+			test_fb_insert(&tree, i, 33);
+		}
+	}
+
 	//fb_print_tree(&tree);
-	for (size_t i = 0; i < items; ++i)
+	for (int i = 0; i < items; ++i)
 	{
 		test_fb_get(&tree, i);
 	}
