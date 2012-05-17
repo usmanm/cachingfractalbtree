@@ -169,16 +169,77 @@ void fb_destr_tree(
  * @param[out] found Whether the key is in the tree
  * @param[out] value The position of the tuple for key 'key'
  */
-void fb_get(
+void fb_retrieve(
 		fb_tree *tree,
 		fb_key key,
 		bool *exact,
-		uint32_t *result);
+		fb_val *result);
 
+void _fb_retrieve(
+		fb_tree *tree,
+		fb_key key,
+		bool *exact,
+		fb_val *result,
+		fb_pos *block_pos,
+		fb_pos *node_pos);
+
+/**
+ * Insert a new value in the tree
+ * @param[in] tree The tree to which we are adding the value
+ * @param[in] key The key to insert
+ * @param[in] value The value corresponding to the key
+ */
 void fb_insert(
 		fb_tree *tree,
 		fb_key key,
-		uint32_t value);
+		fb_val value);
+
+void _fb_insert(
+		fb_tree *tree,
+		fb_key key,
+		fb_val value,
+		bool exact,
+		fb_pos block_pos,
+		fb_pos node_pos);
+/**
+ * Try to add an entry to a block cache
+ * @param[in] tree The tree to use
+ * @param[in] block_pos The block whose cache to access
+ * @param[in] key The key to try to insert
+ * @param[in] tuple The value corresponding to the key
+ */
+void fb_cache_add(
+		fb_tree *tree,
+		fb_pos block_pos,
+		fb_key key,
+		fb_tuple *tuple);
+
+/**
+ * Check whether an entry is cached
+ * @param[in] tree The tree to use
+ * @param[in] block_pos The block whose cache to access
+ * @param[in] key The key to probe
+ * @param[out] tuple The value corresponding to the key, if found
+ * @return True if the value was found and tuple was set
+ */
+bool fb_cache_probe(
+		fb_tree *tree,
+		fb_pos block_pos,
+		fb_key key,
+		fb_tuple *tuple);
+
+/**
+ * Try to replace an existing cache entry on tree insertion
+ * @param[in] tree The tree to use
+ * @param[in] block_pos The block whose cache to access
+ * @param[in] key The key to try to replace, if cached
+ * @param[in] tuple The new value to assign to the key
+ */
+void fb_cache_replace(
+		fb_tree *tree,
+		fb_pos block_pos,
+		fb_key key,
+		fb_tuple *tuple);
 
 #endif
 

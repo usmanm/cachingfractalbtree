@@ -1,24 +1,20 @@
 #ifndef DB_H
 #define DB_H
 
-typedef uint32_t key_t;
+#include <unistd.h>
+#include <stdint.h>
 
-typedef struct _tuple_t tuple_t;
-struct _tuple_t 
-{
-	uint32_t id;
-	char name[20];
-	uint32_t items[2];
-}
-__attribute__((packed));
+#include "cfb_tree.h"
 
 void init(size_t block_size, size_t slot_size, size_t bfactor);
 
 void destr();
 
-int insert(key_t key, tuple_t *tuple);
+int insert_cached(fb_key key, fb_tuple *tuple);
+int insert_uncached(fb_key key, fb_tuple *tuple);
 
-int search(key_t key, tuple_t *t);
+int search_cached(fb_key key, fb_tuple *t);
+int search_uncached(fb_key key, fb_tuple *t);
 
 #endif
 

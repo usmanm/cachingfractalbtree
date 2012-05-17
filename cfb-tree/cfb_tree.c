@@ -1,12 +1,13 @@
 #include "cfb_tree.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <fcntl.h>
 #include <unistd.h>
 
 typedef struct _fb_node_data fb_node_data;
@@ -349,7 +350,7 @@ static inline void _fb_search_block(
 	}
 }
 
-void _fb_get(
+void _fb_retrieve(
 		fb_tree *tree,
 		fb_key key,
 		bool *exact,
@@ -385,17 +386,15 @@ void _fb_get(
 	_fb_unload_block(tree, block);
 }
 
-void fb_get(
+void fb_retrieve(
 		fb_tree *tree,
 		fb_key key,
 		bool *exact,
-		uint32_t *result)
+		fb_val *result)
 {
 	fb_pos block_pos;
 	fb_pos node_pos;
-	fb_val res;
-	_fb_get(tree, key, exact, &res, &block_pos, &node_pos);
-	*result = res.value;
+	_fb_retrieve(tree, key, exact, result, &block_pos, &node_pos);
 }
 
 
@@ -674,45 +673,51 @@ void _fb_replace_value(
 	}
 }
 
-void fb_insert(
+void _fb_insert(
 		fb_tree *tree,
 		fb_key key,
-		uint32_t value)
+		fb_val value,
+		bool exact,
+		fb_pos block_pos,
+		fb_pos node_pos)
 {
-	bool exact;
-	fb_pos block_pos;
-	fb_pos node_pos;
-	
-	fb_val val;
-	val.type = CFB_VALUE_TYPE_CNTNT;
-	val.value = value;
-
 	fb_block_data block;
 	if (tree->content == 0) // insertion on empty tree
 	{
 		block = _fb_load_block(tree, tree->root, true);
 		_fb_init_node(tree, block.block, 0);
-		_fb_insert_node(tree, block.block, tree->root, 0, key, val);
+		_fb_insert_node(tree, block.block, tree->root, 0, key, value);
 		_fb_unload_block(tree, block);
 		return;
 	}
-
-	// find the leaf where the result should be
-	fb_val result;
-	_fb_get(tree, key, &exact, &result, &block_pos, &node_pos);
-	//printf("fb_insert into block %i and node %i\n", block_pos, node_pos);
 	
 	block = _fb_load_block(tree, block_pos, true);
 	if (exact) // exact match, replace value
 	{
-		_fb_replace_value(tree, block.block, node_pos, key, val);
+		_fb_replace_value(tree, block.block, node_pos, key, value);
 		return;
 	}
 	else // true insertion
 	{
-		_fb_insert_node(tree, block.block, block_pos, node_pos, key, val);
+		_fb_insert_node(tree, block.block, block_pos, node_pos, key, value);
 	}
 	_fb_unload_block(tree, block);
+}
+
+void fb_insert(
+		fb_tree *tree,
+		fb_key key,
+		fb_val value)
+{
+	bool exact;
+	fb_pos block_pos;
+	fb_pos node_pos;
+	fb_val result;
+	if (tree->content > 0)
+	{
+		_fb_retrieve(tree, key, &exact, &result, &block_pos, &node_pos);
+	}
+	_fb_insert(tree, key, value, exact, block_pos, node_pos);
 }
 
 static fb_pos _fb_cache_hash(fb_key key, uint32_t param, uint32_t range)
@@ -720,34 +725,58 @@ static fb_pos _fb_cache_hash(fb_key key, uint32_t param, uint32_t range)
 	return (key + param) % range;
 }
 
-void _fb_cache_add(
+void fb_cache_add(
 		fb_tree *tree,
 		fb_pos block_pos,
 		fb_key key,
 		fb_tuple *tuple)
 {
 	fb_block_data data =_fb_load_block(tree, block_pos, true);
+	fb_pos insert_slot = 0;
+	fb_pos insert_entry = 0;
+	bool cache_found = false;
 
+	// either find a slot where we can insert the tuple
+	// or force out a cached item in the first slot we hash to
+	fb_pos node_pos;
+	fb_node_data node;
 	for (size_t i = 0; i < tree->block_slots; ++i)
 	{
-		fb_pos node_pos = _fb_cache_hash(key, i, tree->block_slots);
-		fb_node_data node = _fb_node_content(tree, data.block, node_pos);
+		node_pos = _fb_cache_hash(key, i, tree->block_slots);
+		node = _fb_node_content(tree, data.block, node_pos);
 		if (node.slot->type == CFB_SLOT_TYPE_CACHE)
 		{		
-			if (tree->cache_tuples > node.slot->cont)
+			if (!cache_found)
 			{
-				fb_tuple *check = (fb_tuple *)node.slot->body + node.slot->cont;
-				memcpy(check, tuple, sizeof(fb_tuple));
+				// coordinates of first cache found
+				// in case we cannot find any available cache entry
+				insert_slot = node_pos;
+				insert_entry = key % tree->cache_tuples;
+				cache_found = true;
+			}
+			if (node.slot->cont < tree->cache_tuples)
+			{
+				// found an available cache entry
+				insert_slot = node_pos;
+				insert_entry = node.slot->cont;
 				++node.slot->cont;
 				break;
 			}
 		}
 	}
+	if (!cache_found) // no cache slot available
+	{
+		return;
+	}
+
+	node = _fb_node_content(tree, data.block, insert_slot);
+	fb_tuple *check = (fb_tuple *)node.slot->body + insert_entry;
+	memcpy(check, tuple, sizeof(fb_tuple));
 
 	_fb_unload_block(tree, data);
 }
 
-bool _fb_cache_probe(
+bool fb_cache_probe(
 		fb_tree *tree,
 		fb_pos block_pos,
 		fb_key key,
@@ -782,6 +811,42 @@ bool _fb_cache_probe(
 
 	_fb_unload_block(tree, data);
 	return false;
+}
+
+void fb_cache_replace(
+		fb_tree *tree,
+		fb_pos block_pos,
+		fb_key key,
+		fb_tuple *tuple)
+{
+	fb_block_data data =_fb_load_block(tree, block_pos, true);
+
+	for (size_t i = 0; i < tree->block_slots; ++i)
+	{
+		fb_pos node_pos = _fb_cache_hash(key, i, tree->block_slots);
+		fb_node_data node = _fb_node_content(tree, data.block, node_pos);
+		if (node.slot->type == CFB_SLOT_TYPE_CACHE)
+		{
+			for (size_t j = 0; j < node.slot->cont; ++j)
+			{
+				fb_tuple *check = (fb_tuple *)node.slot->body + j;
+				if (check->id == key)
+				{
+					// replace old entry
+					memcpy(check, tuple, sizeof(fb_tuple));
+					_fb_unload_block(tree, data);
+				}
+			}
+			if (tree->cache_tuples > node.slot->cont)
+			{
+				// there is a space that key should have used
+				// if it's not here, it's not cached
+				break;
+			}
+		}
+	}
+
+	_fb_unload_block(tree, data);
 }
 
 
