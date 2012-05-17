@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "fb_tree.c"
+#include "cfb_tree.c"
 #include "db.c"
 
 void test_fb_search_node(fb_tree *tree, fb_block_h *block, fb_key key, fb_pos node_pos)
@@ -80,94 +80,27 @@ int main(int argc, char *argv[])
 	{
 		test_fb_get(&tree, i);
 	}
-	//test_fb_insert(&tree, 0x44, 0x44);
-	//test_fb_insert(&tree, 0x77, 0x77);
-	//test_fb_insert(&tree, 0x66, 0x66);
-	//test_fb_search_node(&tree, tree.root, 0xAA, 0);
-	//test_fb_search_block(&tree, tree.root, 0xAA);
-
-	/*char m[] = {
-		CFB_SLOT_TYPE_NODE, 2,
-		3, 0, 0, 0,
-		6, 0, 0, 0,
-		0, 0, 0, 0,
-		CFB_SLOT_TYPE_NODE, 2,
-		1, 0, 0, 0,
-		2, 0, 0, 0,
-		0, 0, 0, 0,
-		CFB_SLOT_TYPE_NODE, 2,
-		3, 0, 0, 0,
-		5, 0, 0, 0,
-		0, 0, 0, 0,
-		CFB_SLOT_TYPE_NODE, 2,
-		6, 0, 0, 0,
-		7, 0, 0, 0,
-		0, 0, 0, 0,
-		CFB_SLOT_TYPE_CACHE, 0,
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_VAL, 1, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_VAL, 2, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_VAL, 3, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_VAL, 5, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_VAL, 6, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_VAL, 7, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0,
-		CFB_LEAF_TYPE_NULL, 0, 0, 0, 0, 0, 0, 0, 0
-	};
-	memcpy(block_h->body, (char *)m, sizeof(m));
-
-	test_fb_search_node(&tree, block_h, 0);
-	test_fb_search_node(&tree, block_h, 1);
-	test_fb_search_node(&tree, block_h, 2);
-	test_fb_search_node(&tree, block_h, 3);
-	test_fb_search_node(&tree, block_h, 4);
-	test_fb_search_node(&tree, block_h, 5);
-	test_fb_search_node(&tree, block_h, 6);
-	test_fb_search_node(&tree, block_h, 7);
-	test_fb_search_node(&tree, block_h, 8);
-	printf("\n");
-	
-	test_fb_search_block(&tree, block_h, 0);
-	test_fb_search_block(&tree, block_h, 1);
-	test_fb_search_block(&tree, block_h, 2);
-	test_fb_search_block(&tree, block_h, 3);
-	test_fb_search_block(&tree, block_h, 4);
-	test_fb_search_block(&tree, block_h, 5);
-	test_fb_search_block(&tree, block_h, 6);
-	test_fb_search_block(&tree, block_h, 7);
-	test_fb_search_block(&tree, block_h, 8);
-	printf("\n");
-
-	test_fb_get(&tree, 0);
-	test_fb_get(&tree, 1);
-	test_fb_get(&tree, 2);
-	test_fb_get(&tree, 3);
-	test_fb_get(&tree, 4);
-	test_fb_get(&tree, 5);
-	test_fb_get(&tree, 6);
-	test_fb_get(&tree, 7);
-	test_fb_get(&tree, 8);
-	printf("\n");
-
-	test_fb_insert(&tree, 3, 0xCA);
-	test_fb_get(&tree, 3);
-	test_fb_insert(&tree, 4, 0xCB);
-	test_fb_get(&tree, 4);
-	test_fb_insert(&tree, 8, 0xCC);
-	test_fb_get(&tree, 8);*/
 
 	fb_destr_tree(&tree);
+
+	init(block, slot, bfactor);
+	key_t key = 50000;
+	tuple_t tuple;
+	tuple.id = key;
+	memcpy(tuple.name, "Edsger Dijkstra    \0", 20);
+	tuple.items[0] = 19300511;
+	tuple.items[1] = 20020806;
+	insert(key, &tuple);
+	tuple_t res1, res2;
+	search(key, &res1);
+	search(key, &res1);
+	search(key, &res1);
+	search(key, &res1);
+	search(key, &res1);
+	search(key, &res2);
+	printf("<%i, %s, %i, %i>\n", res2.id, res2.name, res2.items[0], res2.items[1]);
+	destr();
+
 	return EXIT_SUCCESS;
 }
 

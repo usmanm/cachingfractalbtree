@@ -1,4 +1,4 @@
-#include "fb_tree.h"
+#include "cfb_tree.h"
 
 #include <assert.h>
 #include <math.h>
@@ -714,4 +714,74 @@ void fb_insert(
 	}
 	_fb_unload_block(tree, block);
 }
+
+static fb_pos _fb_cache_hash(fb_key key, uint32_t param, uint32_t range)
+{
+	return (key + param) % range;
+}
+
+void _fb_cache_add(
+		fb_tree *tree,
+		fb_pos block_pos,
+		fb_key key,
+		fb_tuple *tuple)
+{
+	fb_block_data data =_fb_load_block(tree, block_pos, true);
+
+	for (size_t i = 0; i < tree->block_slots; ++i)
+	{
+		fb_pos node_pos = _fb_cache_hash(key, i, tree->block_slots);
+		fb_node_data node = _fb_node_content(tree, data.block, node_pos);
+		if (node.slot->type == CFB_SLOT_TYPE_CACHE)
+		{		
+			if (tree->cache_tuples > node.slot->cont)
+			{
+				fb_tuple *check = (fb_tuple *)node.slot->body + node.slot->cont;
+				memcpy(check, tuple, sizeof(fb_tuple));
+				++node.slot->cont;
+				break;
+			}
+		}
+	}
+
+	_fb_unload_block(tree, data);
+}
+
+bool _fb_cache_probe(
+		fb_tree *tree,
+		fb_pos block_pos,
+		fb_key key,
+		fb_tuple *tuple)
+{
+	fb_block_data data =_fb_load_block(tree, block_pos, true);
+
+	for (size_t i = 0; i < tree->block_slots; ++i)
+	{
+		fb_pos node_pos = _fb_cache_hash(key, i, tree->block_slots);
+		fb_node_data node = _fb_node_content(tree, data.block, node_pos);
+		if (node.slot->type == CFB_SLOT_TYPE_CACHE)
+		{
+			for (size_t j = 0; j < node.slot->cont; ++j)
+			{
+				fb_tuple *check = (fb_tuple *)node.slot->body + j;
+				if (check->id == key)
+				{
+					memcpy(tuple, check, sizeof(fb_tuple));
+					_fb_unload_block(tree, data);
+					return true;
+				}
+			}
+			if (tree->cache_tuples > node.slot->cont)
+			{
+				// there is a space that key should have used
+				// if it's not here, it's not cached
+				break;
+			}
+		}
+	}
+
+	_fb_unload_block(tree, data);
+	return false;
+}
+
 

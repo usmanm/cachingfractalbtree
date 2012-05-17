@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 #include "db.h"
-#include "fb_tree.h"
+#include "cfb_tree.h"
 
 int dbfd;
 fb_tree tree;
@@ -19,7 +19,7 @@ size_t content = 0;
 void init(size_t block_size, size_t slot_size, size_t bfactor)
 {
 	dbfd = open(DB_FILE, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-	assert(dbfd == 0);
+	assert(dbfd != -1);
 
 	fb_init_tree(&tree, INDEX_FILE, block_size, slot_size, bfactor);
 
@@ -44,16 +44,25 @@ int insert(key_t key, tuple_t *tuple)
 int search(key_t key, tuple_t *tuple)
 {
 	bool exact;
-	uint32_t result;
-	fb_get(&tree, key, &exact, &result);
+	fb_val result;
+	fb_pos block_pos, node_pos;
+	_fb_get(&tree, key, &exact, &result, &block_pos, &node_pos);
 	if (!exact)
 	{
 		return -1;
 	}
 	else
 	{
-		lseek(dbfd, result, SEEK_SET);
-		read(dbfd, tuple, sizeof(tuple_t));
-		return 0;
+		if (_fb_cache_probe(&tree, block_pos, key, (fb_tuple *)tuple))
+		{
+			return 0;
+		}
+		else
+		{
+			lseek(dbfd, result.value, SEEK_SET);
+			read(dbfd, tuple, sizeof(tuple_t));
+			_fb_cache_add(&tree, block_pos, key, (fb_tuple *)tuple);
+			return 0;
+		}
 	}
 }
