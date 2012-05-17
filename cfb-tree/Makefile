@@ -11,7 +11,7 @@ PERF = -O3 -march=native
 
 LIBS = -lm
 
-test: fb_tree.c fb_tree.h test.c
+test: fb_tree.c fb_tree.h test.c db.h db.c
 	$(CC) $(CFLAGS) $(DEBUG) $(PERF) $(LIBS) $(DEFS) -o test test.c
 
 fb_tree.o: fb_tree.c fb_tree.h

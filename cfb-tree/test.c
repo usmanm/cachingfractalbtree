@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "fb_tree.c"
+#include "db.c"
 
 void test_fb_search_node(fb_tree *tree, fb_block_h *block, fb_key key, fb_pos node_pos)
 {
