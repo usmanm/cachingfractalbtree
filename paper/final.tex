@@ -108,7 +108,7 @@ caching tuples
 \section{Fractal B+ trees}
 \usman
 \begin{enumerate}
-	\item Explain the data structure
+	\item Explain the data structure (don't go into SPLIT and MERGE though, I need to talk about these later)
 	\item Give rationale for usage: have best disk performance, want to improve cache performance
 	\item Add all your interesting observations about the relationship between parameters (bfactor etc etc)
 \end{enumerate}
@@ -118,7 +118,18 @@ Will make graphs if necessary to explain something
 \section{Adding Caching: CFB+ trees}
 \claudio
 \subsection{Rationale}
-what are we trying to accomplish?
+This far, we have illustrated how FB+ trees store a small B+ tree in each big node.
+The original strategy for FB+ trees is to fragment big nodes into smaller nodes when the small trees
+are mostly empty, and pack multiple big nodes in the same disk page.
+Instead, when big nodes grow, the inverse strategy is applied and big nodes are split and spread
+across pages.
+
+This process adds complexity to the implementation, and only guarantees that pages are filled
+homogeneously, not that space waste is minimized.
+Indeed, when a big block is split in half, we can expect the former page to become half empty and
+the new one to become half full.
+
+
 \subsection{Patterns of Memory (Un)Usage}
 regular structure of voids \\
 enough size to store a piece of data
@@ -133,6 +144,8 @@ why not other hashing (cuckoo/hopscotch better in theory, but we cannot displace
 \subsection{Implementations}
 \claudio
 Describe some details of the implementations \\
+how we compress big nodes in amortized O(1)\\
+we could use jump pointers to exploit prefetching for range queries (which we didn't consider) \citep{Chen:2001} \\
 Complexity, why we didn't go for cache oblivious sizing (split stage would be a nightmare)
 
 For all benchmarks in this paper, we use a system based on an Intel Core i7 920 with 4 GB of RAM.
