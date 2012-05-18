@@ -5,10 +5,13 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 
+% colored text
+\usepackage{color}
+
 % Evolutional algorithms journal template
 \usepackage{ecj}
 
-% set spacing in enums and items
+% custom enumerates
 \usepackage{enumitem}
 
 % eps figures
@@ -23,7 +26,12 @@
 % citations with author
 \usepackage{natbib}
 
+% additional colors
+\usepackage[usenames,dvipsnames]{xcolor}
+
 \newcommand{\concat}{\ensuremath{+\!\!\!\!+\,}}
+\newcommand{\usman}{\textcolor{Red}{\textbf{*** USMAN ***} }}
+\newcommand{\claudio}{\textcolor{Cerulean}{\textbf{*** CLAUDIO ***} }}
 
 \floatstyle{boxed} 
 \restylefloat{figure}
@@ -31,6 +39,8 @@
 \setlength{\parskip}{7pt}
 \setlength{\parsep}{0pt}
 \setlength{\parindent}{0pt}
+
+\setlist{nolistsep}
 
 % ADDING A FIGURE
 %\begin{figure}[t]
@@ -64,41 +74,85 @@
 
 \begin{abstract}
 
-
-Genetic algorithms (GAs) have been proposed for the solution of the Longest Common Subsequence problem (LCS).
-Their ability to perform efficiently on practical use cases has been analyzed both theoretically and empirically in the literature.
-Most benchmarks focused on the NP-complete case of finding the LCS of more than two sequences,
-obtaining strongly positive performance outcomes.
-
-In this paper, we explore the time performance of a GA algorithm for the P-complete LCS problem on two sequences
-with the purpose of contrasting it to that of polynomial deterministic algorithms.
-We produce an improved implementation of the algorithm, along with two other deterministic algorithms, and we compare their
-performance under real-world test cases.
-We conclude that the GA algorithm fares mostly poorly compared to deterministic algorithms.
+\claudio Recycle this and make usable \\
+A key requirement for database systems is utilizing storage thriftily and avoiding space wastes.
+However, this necessity often stands in contrasts with the ability to service database queries
+efficiently.
+For instance, many modern databases use B+ trees to store table indexes,
+including IBM DB2, Oracle, and MS SQL Server \cite{whouses}.
+These structures span many hundreds of pages on the disk,
+so it would be expensive to copy substantial portions of them each time new items are inserted.
+To mitigate this problem, the B+ trees are only partially filled,
+so that new keys can be added in the gaps between items before having to copy the structure.
+However, such approach causes a large waste of gap space, as the structure either has gaps
+available or new ones are created to save time on future insertions.
+In traditional databases, the amount of B+ trees space left as gaps averages to 32\%,
+which in practice represents millions of bytes \cite{springerlink:10.1007/BF00289075}. Hence, when 
+scanning B+ tree indexes many CPU cycles are spent reading waste from disk, 
+incurring a significant performance overhead. Our project will focus on taking advantages 
+of these large gap spaces to cache hot database entries in an attempt to make query 
+operations even faster.
 \end{abstract}
 
-\begin{keywords}
-Genetic algorithms,
-genetic heuristics,
-dynamic programming,
-performance comparison,
-longest common subsequence.
-\end{keywords}
-
 \section{Introduction}
-For all benchmarks in this paper, we use a system with the following specifications:
 
-\begin{tabular}{l|l|c}
-	Processor & Model & Intel Core i7 920 \\
-	& Clock freq. & 4.0 GHz \\
-	& Phys. cores & 4 \\
-\hline
-	RAM & Capacity & 6 GB \\
-	& Clock freq. & 1333 MHz \\
-	& Channels & 3
-\end{tabular}
+\usman
+\begin{enumerate}
+	\item Give background on database systems and their needs (bottleneck of page reads)
+	\item Operations needed, why B+ trees and not other structures
+	\item Survey very briefly basics of B+ trees, page performance
+	\item State that we're going to improve cache performance with the idea from the paper and then improve even further
+caching tuples
+\end{enumerate}
 
-All code was written in the C language, and compiled with gcc version 4.6.1
+
+
+\section{Fractal B+ trees}
+\usman
+\begin{enumerate}
+	\item Explain the data structure
+	\item Give rationale for usage: have best disk performance, want to improve cache performance
+	\item Add all your interesting observations about the relationship between parameters (bfactor etc etc)
+\end{enumerate}
+\claudio
+Will make graphs if necessary to explain something
+
+\section{Adding Caching: CFB+ trees}
+\claudio
+\subsection{Rationale}
+what are we trying to accomplish?
+\subsection{Patterns of Memory (Un)Usage}
+regular structure of voids \\
+enough size to store a piece of data
+\subsection{Caching tuples}
+how we do it \\
+why open addressing (many holes so good perf), linear probing \\
+why not other hashing (cuckoo/hopscotch better in theory, but we cannot displace nodes allocated to tree) \\
+
+
+\section{Experimental Results}
+
+\subsection{Implementations}
+\claudio
+Describe some details of the implementations \\
+Complexity, why we didn't go for cache oblivious sizing (split stage would be a nightmare)
+
+For all benchmarks in this paper, we use a system based on an Intel Core i7 920 with 4 GB of RAM.
+All code was written in the C language, and compiled with gcc version 4.6.1.
+
+\subsection{Benchmarks}
+\usman
+\begin{enumerate}
+	\item Make benchmarks and collect all performance data
+	\item Explain why the benchmarks are relevant / useful / interesting
+\end{enumerate}
+\claudio
+Make plots after the data is collected
+
+
+\section{Conclusions}
+\claudio
+Summarize and remark that we managed to improve.
 
 \small
 
