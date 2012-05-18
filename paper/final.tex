@@ -1,0 +1,109 @@
+\documentclass{article}
+
+% AMS math symbols
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% Evolutional algorithms journal template
+\usepackage{ecj}
+
+% set spacing in enums and items
+\usepackage{enumitem}
+
+% eps figures
+\usepackage{epsfig}
+
+% boxed figures
+\usepackage{float}
+
+% reduce margins
+\usepackage{fullpage}
+
+% citations with author
+\usepackage{natbib}
+
+\newcommand{\concat}{\ensuremath{+\!\!\!\!+\,}}
+
+\floatstyle{boxed} 
+\restylefloat{figure}
+
+\setlength{\parskip}{7pt}
+\setlength{\parsep}{0pt}
+\setlength{\parindent}{0pt}
+
+% ADDING A FIGURE
+%\begin{figure}[t]
+%\begin{center}
+%\psfig{file=Bsimilar.eps,width=300pt}
+%\end{center}
+%\caption{NKY algorithm: performance of different implementations.}
+%\label{fig:Bsimilar}
+%\end{figure}
+%
+
+% CITING
+% \citep{citation}
+
+\begin{document}
+
+% uncomment this to get journal footers
+%\ecjHeader{x}{x}{xxx-xxx}{200X}{genetic vs deterministic algorithms for LCS}{C. A. Andreoni, U. Masood}
+\title{Caching Fractal B+ Trees}
+
+\author{\name{\bf Claudio Alberto Andreoni} \hfill \addr{caa@mit.edu}\\ 
+        \addr{Department of Mathematics, Massachusetts Institute of Technology, 
+        Cambridge, 02139, United States}
+\AND
+       \name{\bf Usman Masood} \hfill \addr{usmanm@mit.edu}\\
+        \addr{Department of Electrical Engineering and Computer Science, Massachusetts Institute of Technology, 
+        Cambridge, 02139, United States}
+}
+
+\maketitle
+
+\begin{abstract}
+
+
+Genetic algorithms (GAs) have been proposed for the solution of the Longest Common Subsequence problem (LCS).
+Their ability to perform efficiently on practical use cases has been analyzed both theoretically and empirically in the literature.
+Most benchmarks focused on the NP-complete case of finding the LCS of more than two sequences,
+obtaining strongly positive performance outcomes.
+
+In this paper, we explore the time performance of a GA algorithm for the P-complete LCS problem on two sequences
+with the purpose of contrasting it to that of polynomial deterministic algorithms.
+We produce an improved implementation of the algorithm, along with two other deterministic algorithms, and we compare their
+performance under real-world test cases.
+We conclude that the GA algorithm fares mostly poorly compared to deterministic algorithms.
+\end{abstract}
+
+\begin{keywords}
+Genetic algorithms,
+genetic heuristics,
+dynamic programming,
+performance comparison,
+longest common subsequence.
+\end{keywords}
+
+\section{Introduction}
+For all benchmarks in this paper, we use a system with the following specifications:
+
+\begin{tabular}{l|l|c}
+	Processor & Model & Intel Core i7 920 \\
+	& Clock freq. & 4.0 GHz \\
+	& Phys. cores & 4 \\
+\hline
+	RAM & Capacity & 6 GB \\
+	& Clock freq. & 1333 MHz \\
+	& Channels & 3
+\end{tabular}
+
+All code was written in the C language, and compiled with gcc version 4.6.1
+
+\small
+
+\bibliographystyle{apalike}
+\bibliography{final}
+
+
+\end{document}
