@@ -109,6 +109,7 @@ caching tuples
 \usman
 \begin{enumerate}
 	\item Explain the data structure (don't go into SPLIT and MERGE though, I need to talk about these later)
+	\item Say that the way they are used is index adn then you have to access the disk separately later 
 	\item Give rationale for usage: have best disk performance, want to improve cache performance
 	\item Add all your interesting observations about the relationship between parameters (bfactor etc etc)
 \end{enumerate}
@@ -128,6 +129,10 @@ This process adds complexity to the implementation, and only guarantees that pag
 homogeneously, not that space waste is minimized.
 Indeed, when a big block is split in half, we can expect the former page to become half empty and
 the new one to become half full.
+
+We propose instead that a page always represent a single big node, and the space gaps in the page
+be exploited to cache database tuples.
+This would allow to halt searches for cached items before even getting to the 
 
 
 \subsection{Patterns of Memory (Un)Usage}
