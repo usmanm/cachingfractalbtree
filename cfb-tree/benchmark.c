@@ -179,7 +179,12 @@ _benchmark_searches(bool random, bool cached)
   clock_gettime(CLOCK_REALTIME, &start);
 
   // Insert items, uncached
-  insert_items(0, 10000000, false, true);  
+  insert_items(0, 10000000, false, false); 
+
+  // Preheat cache 
+  if (cached) {
+    lookup_items(2000000, 10000000, true, true);
+  }
 
   // Uncached first, then cached
   // Random first, sequential later
@@ -197,7 +202,7 @@ _benchmark_searches(bool random, bool cached)
   d = 100000 - n;
   n = 100000;
   clock_gettime(CLOCK_REALTIME, &start);
-  lookup_items(n, 10000000,random, cached);  
+  lookup_items(n, 10000000, random, cached);  
   clock_gettime(CLOCK_REALTIME, &end);
   get_diff(&start, &end, &diff);
   printf("Search [N: %u, C: %u, R: %u] ==> %llu.%ld\n", 
