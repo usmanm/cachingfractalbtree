@@ -175,7 +175,7 @@ void
 _benchmark_searches(bool random, bool cached)
 {
   struct timespec start, end, diff;
-  uint32_t n, d;
+  uint32_t n;
   clock_gettime(CLOCK_REALTIME, &start);
 
   // Insert items, uncached
@@ -189,7 +189,7 @@ _benchmark_searches(bool random, bool cached)
   // Uncached first, then cached
   // Random first, sequential later
   // 10K
-  n = d = 10000;
+  n = 10000;
   clock_gettime(CLOCK_REALTIME, &start);
   lookup_items(n, 10000000, random, cached);  
   clock_gettime(CLOCK_REALTIME, &end);
@@ -199,7 +199,6 @@ _benchmark_searches(bool random, bool cached)
 	 (unsigned long long) diff.tv_sec, diff.tv_nsec/1000);
 
   // 100K
-  d = 100000 - n;
   n = 100000;
   clock_gettime(CLOCK_REALTIME, &start);
   lookup_items(n, 10000000, random, cached);  
@@ -210,7 +209,6 @@ _benchmark_searches(bool random, bool cached)
 	 (unsigned long long) diff.tv_sec, diff.tv_nsec/1000);
 
   // 200K
-  d = 200000 - n;
   n = 200000;
   clock_gettime(CLOCK_REALTIME, &start);
   lookup_items(n, 10000000, random, cached);  
@@ -221,7 +219,6 @@ _benchmark_searches(bool random, bool cached)
 	 (unsigned long long) diff.tv_sec, diff.tv_nsec/1000);
 
   // 500K
-  d = 500000 - n;
   n = 500000;
   clock_gettime(CLOCK_REALTIME, &start);
   lookup_items(n, 10000000, random, cached);
@@ -232,7 +229,6 @@ _benchmark_searches(bool random, bool cached)
 	 (unsigned long long) diff.tv_sec, diff.tv_nsec/1000);
 
   // 1M
-  d = 1000000 - n;
   n = 1000000;
   clock_gettime(CLOCK_REALTIME, &start);
   lookup_items(n, 10000000, random, cached);
@@ -243,7 +239,6 @@ _benchmark_searches(bool random, bool cached)
 	 (unsigned long long) diff.tv_sec, diff.tv_nsec/1000);
 
   // 2M
-  d = 2000000 - n;
   n = 2000000;
   clock_gettime(CLOCK_REALTIME, &start);
   lookup_items(n, 10000000, random, cached);
@@ -254,7 +249,6 @@ _benchmark_searches(bool random, bool cached)
 	 (unsigned long long) diff.tv_sec, diff.tv_nsec/1000);
 
   // 5M
-  d = 5000000 - n;
   n = 5000000;
   clock_gettime(CLOCK_REALTIME, &start);
   lookup_items(n, 10000000, random, cached);
@@ -265,7 +259,6 @@ _benchmark_searches(bool random, bool cached)
 	 (unsigned long long) diff.tv_sec, diff.tv_nsec/1000);
 
   // 10M
-  d = 10000000 - n;
   n = 10000000;
   clock_gettime(CLOCK_REALTIME, &start);
   lookup_items(n, 10000000, random, cached);
