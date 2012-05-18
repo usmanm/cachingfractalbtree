@@ -179,7 +179,7 @@ _benchmark_searches(bool random, bool cached)
   clock_gettime(CLOCK_REALTIME, &start);
 
   // Insert items, uncached
-  insert_items(0, 10000000, false, false);  
+  insert_items(0, 10000000, false, true);  
 
   // Uncached first, then cached
   // Random first, sequential later
