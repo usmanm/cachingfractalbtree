@@ -113,7 +113,6 @@ int main() {
   if (BENCHMARK) {
     init_benchmark();
     load_tables(NUMITEMS);
-    //    test_range(NUMLOOKUPS, NUMITEMS);
     test_lookups(NUMLOOKUPS, NUMITEMS);
   }
 

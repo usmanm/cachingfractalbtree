@@ -31,29 +31,6 @@ void load_tables(uint32_t numofitems) {
   printf("Table loaded in %lu s.\n", (unsigned long) (time(NULL) - stime));
 }
 
-void test_range(uint32_t rangesize, uint32_t numofitems) {
-  uint32_t i = rand();
-  time_t stime = time(NULL);
-
-  printf("Testing range [%u]...\n", rangesize);
-
-  while (rangesize != 0) {
-    tuple_t t;
-    char str[] = "Benchmarking Ninjas";
-
-    search(i % numofitems, &t);
-
-    // Verify
-    assert(t.id == (uint32_t) (i % numofitems));
-    assert(memcmp(&t.name, &str, 19) == 0);
-    assert(t.name[19] == (char) (i % numofitems));
-    i++;
-    rangesize--;
-  }
-
-  printf("Range tested in %lu s.\n", (unsigned long) (time(NULL) - stime));
-}
-
 void test_lookups(uint32_t numoflookups, uint32_t numofitems) {
   time_t stime = time(NULL);
 

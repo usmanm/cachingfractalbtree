@@ -11,7 +11,6 @@
 
 void init_benchmark();
 void load_tables(uint32_t numofitems);
-void test_range(uint32_t rangesize, uint32_t numofitems);
 void test_lookups(uint32_t numoflookups, uint32_t numofitems);
 
 #endif
