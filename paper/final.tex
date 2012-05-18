@@ -73,25 +73,23 @@
 \maketitle
 
 \begin{abstract}
+The two primary requirements for database systems are handling data queries rapidly and utilizing storage thriftily.
+However, these often stand in contrast with each other,
+as traditionally space usage and achievable performance are inversely proportional.
+In order to quickly retrieve data,
+databases maintain an index of searchable keys, along with the location of the corresponding data on drive.
+Modern systems such as IBM DB2, Oracle, and MS SQL Server use B+ trees for the indexes,
+due to their ability to efficiently exploit disk bandwidth \citep{Gehrke:2002}.
 
-\claudio Recycle this and make usable \\
-A key requirement for database systems is utilizing storage thriftily and avoiding space wastes.
-However, this necessity often stands in contrasts with the ability to service database queries
-efficiently.
-For instance, many modern databases use B+ trees to store table indexes,
-including IBM DB2, Oracle, and MS SQL Server \cite{whouses}.
-These structures span many hundreds of pages on the disk,
-so it would be expensive to copy substantial portions of them each time new items are inserted.
-To mitigate this problem, the B+ trees are only partially filled,
-so that new keys can be added in the gaps between items before having to copy the structure.
-However, such approach causes a large waste of gap space, as the structure either has gaps
-available or new ones are created to save time on future insertions.
-In traditional databases, the amount of B+ trees space left as gaps averages to 32\%,
-which in practice represents millions of bytes \cite{springerlink:10.1007/BF00289075}. Hence, when 
-scanning B+ tree indexes many CPU cycles are spent reading waste from disk, 
-incurring a significant performance overhead. Our project will focus on taking advantages 
-of these large gap spaces to cache hot database entries in an attempt to make query 
-operations even faster.
+Fractal B+ trees (FB+ trees), a kind of recursive B+ tree structure, were proposed to improve performance
+by adapting to both disk layout and processor cache.
+However, these either increase the amount of space wasted in representing the index,
+or require an aggressive memory management scheme \citep{Chen:2002}.
+
+We propose a new data structure named Caching Fractal B+ trees (CFB+ trees), which replicates the structure
+of FB+ trees, but takes advantage of the wasted space to perform online caching of database entries.
+CFB+ trees simplify the complexity associated with performing index operations,
+and reduce in expectation the number of reads from disk necessary to retrieve the queried data. 
 \end{abstract}
 
 \section{Introduction}
