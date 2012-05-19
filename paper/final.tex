@@ -122,7 +122,7 @@ fcB+ trees have a self-similar "tree within a tree" structure as illustrated in 
 
 \begin{figure}[h]
 \begin{center}
-\includegraphics[width=350pt]{inner_block}
+\includegraphics[width=350pt]{fb+tree_struct}
 \end{center}
 \caption{
 Self-similar "tree within a tree" structure of fpB+ trees
@@ -136,12 +136,16 @@ In the \textit{disk-first} variant of fpB+ trees, we start with a disk-optimized
 
 There is an optimal small node size determined by the memory subsystem and key an pointer sizes. The optimal big node size is determined by the disk page size. There is a likely change that both these sizes  mismatch, in the sense that an inner tree of $k$ level underflows a big node and an inner tree of $k+1$ level overflows the node (Figure \ref{fig:inner_block}). We want to pick the size of the small nodes such that it minimizes the amount of unused space and the space taken by small inner nodes, while minimizing the cost of searching through the inner tree. We note that there are two parameters that affect these goals: $w$ the number of cache lines a small node spans, and $n$ the number of key/value pairs we can fit in a single cache line. 
 
-The branching factor of the inner tree is $f=wm$, which makes the height $h$ of the tree roughly equal to $\log_f N$, where $N$ is the maximum number of items that can be indexed by an inner tree. The size of a small node is grows linearly with the branching factor. However, the number of small inner nodes is roughly $O(\frac{N}{f^2})$ -- it decreases quadratically with the branching factor. The unused space in a node is equal to 4KB - 
+The branching factor of the inner tree is $f=wm = O(w)$, which makes the height $h$ of the tree roughly equal to $\log_f N$, where $N$ is the maximum number of items that can be indexed by an inner tree. The size $s$ of a small node grows linearly with the branching factor. On the other hand, the number of small inner nodes is roughly $O(\frac{N}{f^2})$, i.e. it decreases quadratically with the branching factor. The unused space $\delta$ in a node is approximately equal to (4KB - $\frac{1-s^{h+1}}{1-s})$. Thus for better space utilization, we must try to maximize the branching factor which in turn implies that we must increase the number of cache lines a small node uses.
 
-\subsection{Improving Range Scanning via Jump Pointers}
+We can approximate the cost of loading a small node into cache to be $c = (T_{cm} + (w-1)\cdot T_{pf})$, where $T_{cm}$ is the cost of a cache miss and $T_{pf}$ is cost of prefetching the next spatially contiguous cache line. In modern processors, $T_{cm}$ is usually much larger than $T_{pf}$. This makes the cost of searching through the entire inner tree equal to $hc = c\cdot \log_f N$, that is the cost of searching through the entire inner tree increases as $O(\frac{w}{\log w})$ with respect to the branching factor.
+
+Hence, there is a tradeoff between space utilization and performance. However, as previously notes, this tradeoff is architecture dependent. So the best we can do is empirically find the optimal value for $w$ that provides the best balance between space utilization and performance. For the purposes of our project, we only try to maximize performance because disk space is practically cheap enough to be considered a free resource.
 
 \section{Adding Caching: CFB+ trees}
 \subsection{Using Gaps for the Greater Good}
+\claudio say that now we have another constraint here of maximizing $\delta$. So we want to minimize $c$, maximize $\delta$ and minimize $\frac{N}{f^2}$
+
 This far, we have illustrated how FB+ trees store a small B+ tree in each big node.
 The strategy proposed for FB+ trees is to fragment big nodes into smaller nodes when the small trees
 are mostly empty, and pack multiple big nodes in the same disk page.
@@ -174,6 +178,8 @@ index pages in memory.
 
 
 \subsection{Patterns of Memory (Un)Usage}
+\claudio
+Add discussion about $\delta + 0.3 \sigma$ and how we always have at least $\delta$ to cache tuples. 
 
 We refer to the memory space necessary to store a small node as a \textit{slot}.
 Each big node contains a fixed number $\sigma$ of slots, part of which will be in use
@@ -205,6 +211,9 @@ of the slot size, making them easy to access and fast to read without much overh
 
 
 \subsection{Caching tuples}
+\claudio 
+I think the whole us vs adversary open addressing is an interesting way of putting it. And maybe we can formulate it as a theoretical problem here and say that to our knowledge we don't know of any hash algorithm that is best for this case. I think demaine will like that.
+
 An important fact to notice is that the pattern of insertions and removals determines the shape of the tree;
 therefore, the distribution of slots available for cache in memory is hard to analyze.
 Moreover, as items are inserted and removed, new nodes are also added and removed;
@@ -326,6 +335,9 @@ In real-world applications, databases tend to be queried the most often for rece
 so we would expect the number of cache hits to be high.
 In the worst case, when there are no cache hits, we pay a small overhead penalty to support the cache.
 However, when all searches are hits, CFB+ trees are 35x faster than FB+ trees.
+
+\claudio
+Say that best params found are 4096, 512, 48, but of course they'll vary with architecture. Can maybe say that prefetching helps us load 8 cache lines is time << 8*cache miss. Coincidentally this is the same value for w that the FB+ paper got. And what value of $\delta$ they give. Fake real benchmark of Wikipedia, and say that cache hit rate is approximately 67% for it and just get results by hard coding that shit.
  
 \begin{figure}[p]
 \begin{center}
@@ -336,6 +348,7 @@ Comparison of performance of B+, FB+, CFB+ trees.
 Database entries are allowed to be memory-cached by the OS, which cancels the advantage of CFB+ trees against FB+ trees.
 The query speedup so obtain serves the purpose
 of illustrating the behavior of fractal trees versus basic trees as the number of queries increases.
+\claudio note that this shows that CFB+ have little computation overhead compared to FB+ trees
 }
 \label{fig:base}
 \end{figure}
@@ -380,7 +393,7 @@ We presented a new data structure, the CFB+ tree, which simplifies FB+ trees by 
 while taking advantage of temporarely unused memory locations as database tuple caches.
 We discussed challenges of the implementation, as well as problems that remain open,
 such as improving upon the caching strategy and defining an efficient cache eviction policy.
-Finally, we showed that, CFB+ trees improve upon FB+ trees by a factor ranging from -1.2 to 35 depending on the number of cache hits.
+Finally, we showed that, CFB+ trees improve upon FB+ trees by a factor ranging from -1.2 to 25 depending on the number of cache hits. For a typical database work load, we found the cache hit rates to be around YY\% which have us a YYx improvement.
 
 \small
 
