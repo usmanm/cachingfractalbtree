@@ -94,15 +94,6 @@ and reduce in expectation the number of reads from disk necessary to retrieve th
 
 \section{Introduction}
 
-\usman
-\begin{enumerate}
-	\item Give background on database systems and their needs (bottleneck of page reads)
-	\item Operations needed, why B+ trees and not other structures
-	\item Survey very briefly basics of B+ trees, page performance
-	\item State that we're going to improve cache performance with the idea from the paper and then improve even further
-caching tuples
-\end{enumerate}
-
 One of the key aspects of data design is that resources, especially disk bandwidth and memory, must be utilized efficiently. To utilize memory efficiently, databases cache \textit{hot} tuples in memory so that when querying for them, they can be fetched directly from memory rather than having to go to the disk. To utilize disk bandwidth efficiently, databases try to minimze the amount of disk pages read and perform sequential access to disk when possible. Disks are usually an order of magnitude slower than memory, and since data in databases needs to be persistent stored on disk, disk bandwidth tends to be the bottleneck for practically all workload.
 
 To that end, databases often employ index structures over certain \textit{columns} to store tuple pointers so that they can be looked up in a way faster than scanning the entire relation. As long as the cost of reading the entire relation is less than the cost of searching for an item in the index structure and fetching a single tuple from disk, we should expect a performance improvement. In practice, all relations are large enough that index structures are helpful rather than detrimental to performance.
