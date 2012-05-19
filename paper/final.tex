@@ -133,12 +133,10 @@ Fractal Prefetching B+ trees (fpB+ trees) are a type of B+ tree which try to opt
 	\item Give rationale for usage: have best disk performance, want to improve cache performance
 	\item Add all your interesting observations about the relationship between parameters (bfactor etc etc)
 \end{enumerate}
-\claudio
-Will make graphs if necessary to explain something
+
 
 \section{Adding Caching: CFB+ trees}
-\claudio
-\subsection{Using Gaps for Good}
+\subsection{Using Gaps for the Greater Good}
 This far, we have illustrated how FB+ trees store a small B+ tree in each big node.
 The strategy proposed for FB+ trees is to fragment big nodes into smaller nodes when the small trees
 are mostly empty, and pack multiple big nodes in the same disk page.
@@ -264,10 +262,6 @@ to add metainformation, but it is conceivable that a smart rearrangement process
 \section{Experimental Results}
 
 \subsection{Implementations}
-\claudio
-For all benchmarks in this paper, we use a system based on an Intel Core i7 920 with 4 GB of RAM.
-All code was written in the C language, and compiled with gcc version 4.6.1 with level-3 optimizations enabled.
-
 We produced three implementations: a basic, unoptimized B+ tree as control, an FB+ tree and a CFB+ tree.
 The FB+ tree follows the same design guidelines that we laid down in this paper for CFB+ trees,
 so that the two differ solely by the presence or absence of our data caching strategy.
@@ -304,18 +298,84 @@ or to adapt the structure for cache-obliviousness.
 
 
 \subsection{Benchmarks}
-\usman
-\begin{enumerate}
-	\item Make benchmarks and collect all performance data
-	\item Explain why the benchmarks are relevant / useful / interesting
-\end{enumerate}
-\claudio
-Make plots after the data is collected
+For all benchmarks we used a Linux 2.6.39 system based on an Intel Core i7 920 with 4 GB of RAM.
+All code was written in the C language, and compiled with gcc version 4.6.1 with level-3 optimizations enabled.
 
+We started with a preliminary benchmark, aimed at comparing basic B+ tree performance against fractal B+ tree performance. showing an improvement
+The results, illustrated in Figure \ref{fig:base}, show a performance increase above 5x.
+For this benchmark, we let the operating system cache database entries along with the index,
+in order to be able to try a larger number of queries, to better show the difference in performance
+achieve by the fractal structure alone.
+
+We proceeded to recreate the realistic case where RAM size is negligible compared to database size by
+forcing the operating system not to cache database entry pages.
+This is the case most of the times in databases, and this is where our CFB+ trees excel.
+Figure \ref{fig:comp} shows the results of querying items serially and randomly both for FB+ and CFB+ trees.
+The CFB+ trees achieve a performance increase of approximately 5x compared t othe FB+ trees.
+
+Finally, we tested a set of realistic parameters for the tree, showing how performance changes with the number
+of cache hits in the CFB+ tree. All parameters that are small integers multiples of page size and cache linea
+size perform similarly well, with larger sizes capitalizing on the better occupacy of the hardware.
+The results are in Figure \ref{cachehits1} and Figure \ref{cachehits2}.
+In real-world applications, databases tend to be queried the most often for recent values,
+so we would expect the number of cache hits to be high.
+In the worst case, when there are no cache hits, we pay a small overhead penalty to support the cache.
+However, when all searches are hits, CFB+ trees are 35x faster than FB+ trees.
+ 
+\begin{figure}[p]
+\begin{center}
+\includegraphics[width=350pt]{base}
+\end{center}
+\caption{
+Comparison of performance of B+, FB+, CFB+ trees.
+Database entries are allowed to be memory-cached by the OS, which cancels the advantage of CFB+ trees against FB+ trees.
+The query speedup so obtain serves the purpose
+of illustrating the behavior of fractal trees versus basic trees as the number of queries increases.
+}
+\label{fig:base}
+\end{figure}
+
+\begin{figure}[p]
+\begin{center}
+\includegraphics[width=350pt]{combs}
+\end{center}
+\caption{
+Comparison of performance of FB+ trees vs CFB+ trees for sequential searches and random searches.
+The total number of items in the trees is 2000, and the cache was pre-heated by 1000 random reads.
+}
+\label{fig:combs}
+\end{figure}
+
+\begin{figure}[p]
+\begin{tabular}{l l}
+\includegraphics[width=250pt]{4096_64_6} & \includegraphics[width=250pt]{8192_64_6} \\
+\includegraphics[width=250pt]{4096_128_12} & \includegraphics[width=250pt]{8192_128_12} \\
+\end{tabular}
+\caption{
+Comparison of performance of FB+ trees vs CFB+ trees for various parameters,
+matching integer multiples of the page and cache line boundaries.
+}
+\label{fig:cachehits1}
+\end{figure}
+
+\begin{figure}[p]
+\begin{tabular}{l l}
+\includegraphics[width=250pt]{4096_256_24} & \includegraphics[width=250pt]{8192_256_24} \\
+\includegraphics[width=250pt]{4096_512_48} & \includegraphics[width=250pt]{8192_512_48} \\
+\end{tabular}
+\caption{
+Comparison of performance of FB+ trees vs CFB+ trees for various parameters,
+matching integer multiples of the page and cache line boundaries.
+}
+\label{fig:cachehits2}
+\end{figure}
 
 \section{Conclusions}
-\claudio
-Summarize and remark that we managed to improve.
+We presented a new data structure, the CFB+ tree, which simplifies FB+ trees by reducing the need for tree reorganization,
+while taking advantage of temporarely unused memory locations as database tuple caches.
+We discussed challenges of the implementation, as well as problems that remain open,
+such as improving upon the caching strategy and defining an efficient cache eviction policy.
+Finally, we showed that, CFB+ trees improve upon FB+ trees by a factor ranging from -1.2 to 35 depending on the number of cache hits.
 
 \small
 
