@@ -5,7 +5,7 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 
-% colored text
+% colored textare that buyers
 \usepackage{color}
 
 % Evolutional algorithms journal template
@@ -118,26 +118,52 @@ Will make graphs if necessary to explain something
 
 \section{Adding Caching: CFB+ trees}
 \claudio
-\subsection{Rationale}
+\subsection{Using Gaps for Good}
 This far, we have illustrated how FB+ trees store a small B+ tree in each big node.
-The original strategy for FB+ trees is to fragment big nodes into smaller nodes when the small trees
+The strategy proposed for FB+ trees is to fragment big nodes into smaller nodes when the small trees
 are mostly empty, and pack multiple big nodes in the same disk page.
 Instead, when big nodes grow, the inverse strategy is applied and big nodes are split and spread
 across pages.
 
 This process adds complexity to the implementation, and only guarantees that pages are filled
 homogeneously, not that space waste is minimized.
-Indeed, when a big block is split in half, we can expect the former page to become half empty and
-the new one to become half full.
+Indeed, when a big block the size of a page is split in half,
+we can expect the former page to become half empty and the new one to become half full.
 
 We propose instead that a page always represent a single big node, and the space gaps in the page
 be exploited to cache database tuples.
-This would allow to halt searches for cached items before even getting to the 
+Compared to the strategy for FB+ trees, we avoid compressing big nodes, resulting in an
+even less efficient tree space usage.
+However, we also exploit all the space which is not allocated to the tree to store cached tuples,
+so that almost no space is left unused.
+
+This allows to return searched tuples which are in cache without the additional overhead of reading a page from
+the actual tuple storage.
+The operating system tries to maintain pages which are accessed frequently in memory for faster
+access.
+Also, pages belonging to the index are accessed more often than tuple pages, because every operation
+needs to walk a path in the index.
+Therefore, caching tuples in the index has the double advantage of reducing the likelihood
+of a read to tuple page which is not in memory, and reducing the need for the operating systems
+to replace index pages in memory with tuple pages.
+The same fact remains relevant for integrated database systems, which strongly enforce the policy of keeping
+index pages in memory.
 
 
 \subsection{Patterns of Memory (Un)Usage}
+
+We refer to the memory space necessary to store a small node as a \textit{slot}.
+The decision of fixing the size of a big node to a page implies that there is a maximum
+number $\sigma$ of slots that we can store per big node.
+
+For the sake of convenience, we want to be able to keep a full B+ tree inside a big node.
+
+
+
 regular structure of voids \\
 enough size to store a piece of data
+
+
 \subsection{Caching tuples}
 how we do it \\
 why open addressing (many holes so good perf), linear probing \\
