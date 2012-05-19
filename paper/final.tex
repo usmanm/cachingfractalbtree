@@ -15,7 +15,7 @@
 \usepackage{enumitem}
 
 % eps figures
-\usepackage{epsfig}
+\usepackage[pdftex]{graphicx}
 
 % boxed figures
 \usepackage{float}
@@ -33,8 +33,8 @@
 \newcommand{\usman}{\textcolor{Red}{\textbf{*** USMAN ***} }}
 \newcommand{\claudio}{\textcolor{Cerulean}{\textbf{*** CLAUDIO ***} }}
 
-\floatstyle{boxed} 
-\restylefloat{figure}
+%\floatstyle{boxed} 
+%\restylefloat{figure}
 
 \setlength{\parskip}{7pt}
 \setlength{\parsep}{0pt}
@@ -153,18 +153,68 @@ index pages in memory.
 \subsection{Patterns of Memory (Un)Usage}
 
 We refer to the memory space necessary to store a small node as a \textit{slot}.
-The decision of fixing the size of a big node to a page implies that there is a maximum
-number $\sigma$ of slots that we can store per big node.
+Each big node contains a fixed number $\sigma$ of slots, part of which will be in use
+as small nodes, while the rest will be available for cache (Figure \ref{fig:inner_block}).
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=350pt]{inner_block}
+\end{center}
+\caption{
+The content of a big node.
+On the left, a small tree as it is interpreted logically.
+On the right, a small tree laid out in memory, with slots available for cache.
+}
+\label{fig:inner_block}
+\end{figure}
 
-For the sake of convenience, we want to be able to keep a full B+ tree inside a big node.
+In order to justify our choice to utilize unused slots as cache,
+we remark that -- under standard database loads --
+B+ trees tend to be full at around 60\% of their capacity \citep{Wu:2011}.
+Thus, given that the tree should be fairly well balanced,
+we expect to have $0.4 \sigma$ slots available for cache on average in leaf big blocks.
+As long as tuples are small enough to fit in a single slot,
+we expect then to be able to cache most of the tuples indexed in the tree.
 
-
-
-regular structure of voids \\
-enough size to store a piece of data
+Furthermore, unused slots are all the same size, and they are all located at an integer multiple
+of the slot size, making them easy to access and fast to read without much overhead.
 
 
 \subsection{Caching tuples}
+An important fact to notice is that the pattern of insertions and removals determines the shape of the tree;
+therefore, the distribution of slots available for cache in memory is hard to analyze.
+Moreover, as items are inserted and removed, new nodes are also added and removed;
+correspondingly, slots that were once available are allocated to the
+tree and become unavailable to the cache, and vice-versa.
+This is evident even from Figure \ref{fig:inner_block}, which illustrates that
+slots available for cache are sparse in the big node.
+
+It is apparent then that the scenario is reminescent of that of a hash table.
+In fact, we can consider the function that allocates slots to the small tree to be an adversary
+hash function taking away and releasing cache slots outside of the control of our cache system.
+We can then interpret the problem as that of finding a suitable hash system to insert and retrieve
+cache entries in unused slots.
+
+Intuitively, a candidate hashing strategy can take inspiration from open addressing.
+Conside a big node $B$ on the path to the leaf that points to tuple $\tau$.
+With open addressing, we insert by repeatedly hashing the key for $\tau$ to a slot in $B$,
+till we find a slot that is available for cache and has room for one more cache entry.
+Similarly, we search by repeatedly hashing the key for $\tau$ till we either find
+a cache slot containing $\tau$, we find a cache slot with room for more entries,
+or we have probed every slot in the big node.
+With this scheme, a cache slot converted to a tree node effectively results
+in the cache entries at that slot being evicted from cache.
+
+Notice that, unlike for the case of traditional open addressing, we do not assume an item is not cached
+if we hash to a slot that has available room but does not contain it.
+That is because otherwise, when a tree node is released and made available from cache, we would risk
+invalidating parts of the cache.
+In spite of the fact that we may need to probe all slots often, performance may not degrade in practice
+thanks to prefetching.
+Modern processors have L1D (data level-1 cache) in the order of tens of KB, so the entire big node
+can be prefetched and loaded at negligible cost by precomputing the next slots to be probe and request
+a prefetch.
+
+
 how we do it \\
 why open addressing (many holes so good perf), linear probing \\
 why not other hashing (cuckoo/hopscotch better in theory, but we cannot displace nodes allocated to tree) \\
