@@ -114,18 +114,31 @@ A downside of using traditional \textit{disk optimized} B+ trees is that they ha
 
 Recently, many studies have presented new types of B+ trees -- \textit{cache-sensitive B+ trees}, \textit{prefetching B+ trees} -- optimized for cache performance. These datastructures try to minimize the impact of cache misses by making node sizes equal to to the width of a cache line (or some small multiple of it). However, this technique for cache optimization is at odds with disk performance. Small nodes result in a small branching factor, which means in searching from the root to the desired leaf, we might suffer a disk page access for each node on this path.
 
-Fractal Prefetching B+ trees (fpB+ trees) are a type of B+ tree which try to optimize both disk and cache performance. In this paper, we propose Caching Fractal B+ trees (cfB+ trees) which extend fpB+ trees to improve cache performance further while ensuring comparable disk performance.
+Fractal Prefetching B+ trees (fpB+ trees) are a type of B+ tree which try to optimize both disk and cache performance. In this paper, we propose Caching Fractal B+ trees (cfB+ trees) which extend fpB+ trees, in particular \textit{disk-first} fcB+ trees, to improve cache performance further while ensuring comparable disk performance.
 
 \section{Fractal B+ trees}
-\usman
-\begin{enumerate}
-	\item Explain the data structure (don't go into SPLIT and MERGE though, I need to talk about these later)
-	\item Say that the way they are used is index adn then you have to access the disk separately later 
-	\item Give rationale for usage: have best disk performance, want to improve cache performance
-	\item Add all your interesting observations about the relationship between parameters (bfactor etc etc)
-\end{enumerate}
-\claudio
-Will make graphs if necessary to explain something
+
+fcB+ trees have a self-similar "tree within a tree" structure as illustrated in Figure \ref{fig:inner_block}. It is an index structure which can be viewed at two granularities. At the outer tree level, it consists of disk-optimized nodes with sizes roughly equal to that of disk page. At the inner tree level, it consists of cache-optimized nodes that are roughly the size of a cache line.
+
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=350pt]{inner_block}
+\end{center}
+\caption{
+Self-similar "tree within a tree" structure of fpB+ trees
+}
+\label{fig:inner_block}
+\end{figure}
+
+In the \textit{disk-first} variant of fpB+ trees, we start with a disk-optimized B+ tree and then try to organize keys and pointers within each node into a cache-optimized B+ tree. Hence, the size of nodes of the outer tree (big nodes) is fixed to 4KB. The inner tree is composed of nodes (small nodes) that are aligned at cache line boundaries and have sizes equal to a some small multiple of the cache line width. Both these schemes aid cache performance. In order to pack more keys and values into the inner tree, the small non-leaf nodes use short in-page offsets (2B) rather than full pointers (4B) because they only need to address a 4K address range. Small leaf nodes, however, need to store full pointers because they point to big nodes.
+
+\subsection{Determining the Size of Small Nodes}
+
+There is an optimal small node size determined by the memory subsystem and key an pointer sizes. The optimal big node size is determined by the disk page size. There is a likely change that both these sizes  mismatch, in the sense that an inner tree of $k$ level underflows a big node and an inner tree of $k+1$ level overflows the node (Figure \ref{fig:inner_block}). We want to pick the size of the small nodes such that it minimizes the amount of unused space and the space taken by small inner nodes, while minimizing the cost of searching through the inner tree. We note that there are two parameters that affect these goals: $w$ the number of cache lines a small node spans, and $n$ the number of key/value pairs we can fit in a single cache line. 
+
+The branching factor of the inner tree is $f=wm$, which makes the height $h$ of the tree roughly equal to $\log_f N$, where $N$ is the maximum number of items that can be indexed by an inner tree. The size of a small node is grows linearly with the branching factor. However, the number of small inner nodes is roughly $O(\frac{N}{f^2})$ -- it decreases quadratically with the branching factor. The unused space in a node is equal to 4KB - 
+
+\subsection{Improving Range Scanning via Jump Pointers}
 
 \section{Adding Caching: CFB+ trees}
 \claudio
