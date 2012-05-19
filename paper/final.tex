@@ -179,12 +179,14 @@ On the right, a small tree laid out in memory, with slots available for cache.
 \end{figure}
 
 In order to justify our choice to utilize unused slots as cache,
-we remark that -- under standard database loads --
-B+ trees tend to be full at around 60\% of their capacity \citep{Wu:2011}.
+we recall the fact provided earlier that
+B+ trees tend to be full at around 68\% of their capacity under standard database loads \citep{Wu:2011}.
 Thus, given that the tree should be fairly well balanced,
-we expect to have $0.4 \sigma$ slots available for cache on average in leaf big blocks.
+we expect to have $0.3 \sigma$ slots available for cache on average in leaf big blocks.
 As long as tuples are small enough to fit in a single slot,
-we expect then to be able to cache most of the tuples indexed in the tree.
+we expect then to be able to cache around half of the tuples indexed in the tree.
+Otherwise, we can store a projection of the data, meaning a subset of the most utilized fields for each entry,
+and still read the disk storage if we don't find a field we are interested in.
 
 Furthermore, unused slots are all the same size, and they are all located at an integer multiple
 of the slot size, making them easy to access and fast to read without much overhead.
@@ -219,29 +221,78 @@ Notice that, unlike for the case of traditional open addressing, we do not assum
 if we hash to a slot that has available room but does not contain it.
 That is because otherwise, when a tree node is released and made available from cache, we would risk
 invalidating parts of the cache.
-In spite of the fact that we may need to probe all slots often, performance may not degrade in practice
+In spite of the fact that we may need to probe all slots often, performance should not degrade in practice
 thanks to prefetching.
-Modern processors have L1D (data level-1 cache) in the order of tens of KB, so the entire big node
-can be prefetched and loaded at negligible cost by precomputing the next slots to be probe and request
-a prefetch.
+If we employ linear probing, the processor will fetch the next slots as we process the current one,
+resulting in an almost negligible cost to access the entire big node.
+That is especially the case for modern processors, which have data L1 cache in the order of tens of KB,
+so the entire big node can be prefected to near processor cache.
 
+Inconveniently, the efficiency of open addressing with linear probing decays very rapidly as the fill factor
+of the big node increases, canceling the advantages of hashing compared to linearly scanning all slots.
+Also, strategies that are more theoretically appealing such as cuckoo and hopscotch hashing
+would not fit the problem conveniently, as displacing a slot used as a node would require to update all references
+to it from other nodes.
 
-how we do it \\
-why open addressing (many holes so good perf), linear probing \\
-why not other hashing (cuckoo/hopscotch better in theory, but we cannot displace nodes allocated to tree) \\
+A possible improvement could come from implementing a coalesced hashing strategy \citep{Vitter:1987}.
+Coalesced hashing unites chaining with open addressing by storing chains of items that would
+share the same bucket sparsely throughout the table but connected by pointers.
+This reduces clustering, while maintaining the ability to use small, fixed-sized slots as opposed to growing chains.
+In the worst case with a long, sparse chain the behavior of coalesced hashing would approximated a linear
+scan in random order, voiding the benefits of prefetching.
+Therefore, we leave the problem of improving over open addressing for a future implementation.
 
+Another problem that we leave open to further investigation is eviction order when the cache is full.
+As we previously stated, some evictions will necessarily happen when a cache slot is upgraded to a node slot.
+However, in many typical database access scenarios, searches largely dominate insertions and deletions.
+Therefore, we would like to have an eviction policy for the case of long series of queries, for instance LRU.
+The main difficulty of implementing a least-recently accessed logic would be the reduction
+in available cache space due to the need to store additional information for access time,
+or the need to frequently rearrange cached items to maintain them ordered by access time.
+Given that slots are already of comparably or lesser sized than an average tuple, it would be a challenge
+to add metainformation, but it is conceivable that a smart rearrangement process could be fruitful.
 
 \section{Experimental Results}
 
 \subsection{Implementations}
 \claudio
-Describe some details of the implementations \\
-how we compress big nodes in amortized O(1)\\
-we could use jump pointers to exploit prefetching for range queries (which we didn't consider) \citep{Chen:2001} \\
-Complexity, why we didn't go for cache oblivious sizing (split stage would be a nightmare)
-
 For all benchmarks in this paper, we use a system based on an Intel Core i7 920 with 4 GB of RAM.
-All code was written in the C language, and compiled with gcc version 4.6.1.
+All code was written in the C language, and compiled with gcc version 4.6.1 with level-3 optimizations enabled.
+
+We produced three implementations: a basic, unoptimized B+ tree as control, an FB+ tree and a CFB+ tree.
+The FB+ tree follows the same design guidelines that we laid down in this paper for CFB+ trees,
+so that the two differ solely by the presence or absence of our data caching strategy.
+This delegates the task of maintaining the first few levels of the tree in memory to the system page cache,
+a choice that can be easily reversed by adding a memory management framework.
+
+Slots in big nodes are allocated/deallocated to/from the tree with an elementary linear probing strategy,
+and small nodes are also searched linearly.
+Processor cache is instrumental in making these operations efficient independently from their asymptotic performance.
+
+Big nodes are managed lazily, so that insertions are appended after the last one, and removals results in gaps.
+When the number of gaps increases to equal the number of used blocks, we compact the entire structure.
+This yields an amortized constant cost, because only one block is moved for every block that was deleted.
+Also, it ensure that the total space occupied by the structure is always asymptotically linear in the number
+of big nodes being actively used.
+
+We support only the basic query operations, leaving the more complex range queries to a future improvement.
+We notice however that, just like FB+ trees, CFB+ trees can be augmented with jump pointers to that end.
+All the leaves with values would be stored outside the tree in a sorted, contiguous fashion.
+Jump pointers would be maintained in the tree, and a search to the leftmost element in a range would be performed.
+Then, it would be sufficient to scan the leaves rightwards till the right boundary of the range is exceeded.
+Again, due to the contiguous nature of the leaves, prefetching would help the performance of the operation.
+
+A problem that could be helped by future work is reducing the implementation complexity for the CFB+ tree.
+The two different granularities at which the structure exist, big tree with big nodes and small trees with small nodes
+at each big node, results in a high complexity burden on the developer.
+The most complex operation is splitting, as it recurses at both granularities, intertwining insertions in parents
+and copies of children with the need to keep all relative likes between nodes updated throughout the move.
+Thus, it would benefit from a cleaner interface between the operations than the one we designed under
+time constraints. 
+This complexity connected with keeping ancestors-descendants coherency at different granularities
+is also what prompted us not to add additional granularities to exploit the three levels of processor cache
+or to adapt the structure for cache-obliviousness.
+
 
 \subsection{Benchmarks}
 \usman
