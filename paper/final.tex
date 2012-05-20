@@ -227,7 +227,7 @@ pointers because they point to big nodes.
 
 \subsection{Determining the Size of Small Nodes}
 
-There is an optimal small node size determined by the architecture's memory subsystem as well as key
+When considering fpB+ trees, the first thing we looked at was how we can calculate the sizes of the big and small nodes, or how much should their branching factor be. We note that there exists an optimal small node size determined by the architecture's memory subsystem as well as key
 and pointer sizes. The optimal big node size is determined by the disk page size.
 It is likely that these sizes mismatch, in the sense that an
 inner tree of $k$ levels underflows a big node, and an inner tree of $k+1$ levels
@@ -235,19 +235,6 @@ overflows the big node (Figure \ref{fig:node_mismatch}). We want to pick the siz
 the small nodes such that it minimizes the amount of both the unused space and the space
 taken by small inner nodes, while minimizing the cost of searching through the
 inner tree. 
-
-We note that there are two parameters that affect these goals: $w$
-the number of cache lines a small node spans, and $n$ the number of key/value
-pairs we can fit in a single cache line. 
-The branching factor of the inner tree is $b=wn = O(w)$, which makes the height
-$h$ of the tree roughly equal to $\log_b N$, where $N$ is the maximum number of
-items that can be indexed by a small tree. The size $s$ of a small node clearly grows
-linearly with the branching factor $b$. On the other hand, the number of small inner
-nodes grows roughly as $\displaystyle O\left(\frac{N}{b^2}\right)$, i.e.\ it decreases quadratically with the
-branching factor. The unused space $\delta$ in a node is approximately equal to
-$\displaystyle \left(4\text{KB} - \frac{1-s^{h+1}}{1-s}\right)$. Thus for better space utilization, we must try
-to maximize the branching factor, which in turn implies that we must increase the
-number of cache lines a small node uses.
 
 \begin{figure}[h]
 \begin{center}
@@ -260,6 +247,18 @@ makes it overflow the big node.
 \label{fig:node_mismatch}
 \end{figure}
 
+We note that there are two parameters that affect these goals: $w$
+the number of cache lines a small node spans, and $n$ the number of key/value
+pairs we can fit in a single cache line. 
+The branching factor of the inner tree is $b=wn = O(w)$, which makes the height
+$h$ of the tree roughly equal to $\log_b N$, where $N$ is the maximum number of
+items that can be indexed by a small tree. The number of small inner
+nodes grows roughly as $\displaystyle O\left(\frac{N}{b^2}\right)$, i.e.\ it decreases quadratically with the
+branching factor. Thus for better space utilization, we must try
+to maximize the branching factor, which in turn implies that we must increase the
+number of cache lines a small node uses. The unused space $\delta$ in a node is approximately equal to
+$\displaystyle \left(S - \frac{1-s^{h+1}}{1-s}\right)$, where $S$ is the size of the big node and $s$ is the size of the small node. Clearly, for better memory utilization we must try to minimize $\delta$ as well.
+
 We can approximate the cost of loading a small node into cache to be $c =
 (T_{cm} + (w-1)\cdot T_{pf})$, where $T_{cm}$ is the cost of a cache miss and
 $T_{pf}$ is cost of prefetching the next spatially contiguous cache line. In
@@ -268,20 +267,13 @@ cost of searching through the small tree equal to $C = ch = c\cdot \log_b N$. Fr
 observe that the cost of searching through the small tree grows as 
 $\displaystyle O\left(\frac{b}{\log b}\right)$ with respect to the branching factor.
 
-Hence, there is a tradeoff between space utilization and performance. As 
-previously noted, this tradeoff is architecture dependent. So the best we can
-do is empirically find the optimal value for $w$ that provides the desirable balance
-between space utilization and performance. For the purposes of our project, we
+Hence, there is a tradeoff between memory utilization and performance. We believe that 
+this tradeoff is reliant on the architecture to the extent that its hard to make any analytical 
+predictions for these paramters. The only thing we can do is  
+empirically find the optimal values for them which provide the desirable balance
+between space utilization and performance. For the purposes of our project, we will
 only try to maximize performance because disks are cheap enough that for all practical purposes
 disk space can be considered a free resource.
-
-\usman Add a note saying that we produced this anaylsis in the attempt to experiment with the
-result of the paper from which we took inspiration.
-We tried to analytically predict the impact of the parameters, but in the end we have
-realized that the dependence of the characteristics of the hardware was too strong,
-and thus the only way to choose the parameters is experimentally.
-To this end, at the end of the paper we run benchmarks to try to identify the
-parameters and to analyze the accuracy of our theoretical intuition. 
 
 \section{Adding Caching: cfB+ trees}
 \subsection{Using Gaps for the Greater Good}
@@ -625,6 +617,13 @@ matching integer multiples of the page and cache line boundaries.
 }
 \label{fig:cachehits2}
 \end{figure}
+
+We also ran synthetic tests on the DBLP dataset. We created two relations \textit{paperauths}, which maps paper IDs to the IDs of its authors, and \textit{authors}, which stores the ID and name of each author occuring in the \textit{paperauth} relation. The schema of both relations looks as follows:
+
+\textit{paperauths}: [INT \textit{paperid}, INT \textit{authid}] \\
+\textit{authors}: [INT \textit{id}, CHAR(20) \textit{name}]
+
+We populated the \textit{paperauths} relation with 5000 tuples and indexed it on \textit{paperid}. There were no duplicate \textit{paperid} fields. For each distinct \textit{authid} in \textit{paperauths}, we inserted the corresponding tuple in the \textit{authers} relation. The cardinaility of the authors relation came out to be approximately 3000, so each author has roughly $\frac{5}{3}$ papers in the \textit{paperauths} relation. The \textit{authers} relation was indexed on the \textit{id} field. Our workload consisted of using random \textit{paperid}s to find the name of the paper's author. We ran this workload on both fpB+ trees and cfB+ trees and saw a performance improvement of approximatey 1.6x when using cfB+ trees. From our earlier results, we concluded that the cache hit rate experienced by this workload was around 37\%.
 
 \section{Conclusions}
 We presented a new data structure, the cfB+ tree, which simplifies fpB+ trees by
